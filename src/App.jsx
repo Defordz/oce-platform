@@ -157,22 +157,75 @@ function CorrectionPage({consignes, history, setHistory}) {
     const text = fileContent || DEMO_TEXT;
     const activeOpts = Object.entries(opts).filter(([,v]) => v).map(([k]) => k).join(", ");
 
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      setError("Clé API manquante. Ajoutez VITE_ANTHROPIC_API_KEY dans les variables d'environnement Vercel.");
+      setPhase("idle");
+      return;
+    }
+
+    const consignesText = consignes
+      .filter(c => c.doctype === docType || c.doctype === "bilingue" || c.doctype === "tous")
+      .map(c => `[${c.code}] ${c.label}\nRègle: ${c.text}\nExemples: ${c.examples}`)
+      .join("\n\n");
+
+    const prompt = `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
+
+Types de corrections actives: ${activeOpts}
+Type de document: ${docType}
+
+CONSIGNES DE CORRECTION:
+${consignesText}
+
+DOCUMENT À CORRIGER:
+${text}
+
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette structure exacte:
+{
+  "corrections": [
+    {
+      "type": "forme|fond|terminologie|bilingue",
+      "code": "code de la consigne ex: F-01",
+      "original": "texte original incorrect",
+      "suggested": "texte corrigé",
+      "reason": "explication courte"
+    }
+  ],
+  "synthese": "résumé de l'analyse en 2-3 phrases",
+  "score": 7
+}`;
+
     try {
-      const res = await fetch("/api/analyze", {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ text, docType, consignes, activeOpts }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-opus-4-5",
+          max_tokens: 2000,
+          messages: [{ role: "user", content: prompt }],
+        }),
       });
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const parsed = await res.json();
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const raw = data.content[0].text.trim();
+      const parsed = JSON.parse(raw);
 
       setCorrections(parsed.corrections || []);
       setSynthese(parsed.synthese || "");
       setScore(parsed.score);
       setHistory(h => [{id:Date.now(),file:fileName||"Document démo",type:docType,corrections:(parsed.corrections||[]).length,score:parsed.score,date:new Date().toLocaleDateString("fr-FR"),data:parsed.corrections,synthese:parsed.synthese},...h]);
     } catch (err) {
-      setError("Erreur lors de l'analyse. Vérifiez que la clé API est bien configurée sur Vercel.");
+      setError("Erreur lors de l'analyse : " + err.message);
       setPhase("idle");
       return;
     }
