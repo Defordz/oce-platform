@@ -243,6 +243,8 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette st
   const acceptAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "accepted"); setStatuses(m); };
   const rejectAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "rejected"); setStatuses(m); };
 
+  const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
     if (!accepted.length) { alert("Aucune correction à télécharger."); return; }
@@ -253,36 +255,34 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette st
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
       let xml = docXml;
-      let changeId = Math.floor(Math.random() * 9000) + 1000;
+      let changeId = 100;
 
-      // Apply each accepted correction as Track Changes in the XML
       for (const c of accepted) {
-        const orig = c.original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        // Escape XML special chars in replacement text
-        const safeOrig = c.original.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-        const safeSugg = c.suggested.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        const safeOrig = escXml(c.original);
+        const safeSugg = escXml(c.suggested);
 
-        const trackChange =
-          `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">` +
-          `<w:r><w:delText xml:space="preserve">${safeOrig}</w:delText></w:r></w:del>` +
-          `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">` +
-          `<w:r><w:t xml:space="preserve">${safeSugg}</w:t></w:r></w:ins>`;
-
-        // Try to replace inside existing <w:t> runs
-        // Match the original text inside a <w:t> tag
-        const searchRegex = new RegExp(
-          `(<w:t[^>]*>)([^<]*?)` + orig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + `([^<]*?)(</w:t>)`,
+        // Match <w:t> (with optional xml:space attr) containing exactly the original text
+        // Replace the content inside the run's <w:t> with del+ins pair, keeping the run wrapper
+        const regex = new RegExp(
+          `(<w:r(?:\s[^>]*)?>(?:<w:rPr>[\s\S]*?</w:rPr>)?)<w:t(?:[^>]*)>${safeOrig.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}</w:t>(</w:r>)`,
           "g"
         );
-        xml = xml.replace(searchRegex, (match, open, before, after, close) => {
-          const beforeXml = before ? `<w:r><w:t xml:space="preserve">${before}</w:t></w:r>` : "";
-          const afterXml = after ? `<w:r><w:t xml:space="preserve">${after}</w:t></w:r>` : "";
-          return `${close}${beforeXml}${trackChange}${afterXml}${open}`;
+
+        xml = xml.replace(regex, (match, runOpen, runClose) => {
+          const delRun = `${runOpen}<w:delText xml:space="preserve">${safeOrig}</w:delText>${runClose}`;
+          const insRun = `${runOpen}<w:t xml:space="preserve">${safeSugg}</w:t>${runClose}`;
+          return (
+            `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">${delRun}</w:del>` +
+            `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">${insRun}</w:ins>`
+          );
         });
       }
 
       zip.file("word/document.xml", xml);
-      const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const blob = await zip.generateAsync({
+        type: "blob",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
