@@ -137,16 +137,25 @@ function CorrectionPage({consignes, history, setHistory}) {
   const [error, setError] = useState("");
   const fileRef = useRef();
 
-  const handleFile = f => {
+  const handleFile = async f => {
     setFileName(f.name);
-    // Read as text for Claude analysis
-    const r = new FileReader();
-    r.onload = e => setFileContent(e.target.result);
-    r.readAsText(f);
-    // Read as binary for docx manipulation
-    const rb = new FileReader();
-    rb.onload = e => setFileBytes(e.target.result);
-    rb.readAsArrayBuffer(f);
+    // Read as binary (needed for both text extraction and docx manipulation)
+    const arrayBuffer = await f.arrayBuffer();
+    setFileBytes(arrayBuffer);
+    // Extract plain text from docx using JSZip
+    try {
+      const zip = await JSZip.loadAsync(arrayBuffer);
+      const docXml = await zip.file("word/document.xml").async("string");
+      // Extract text from all w:t tags
+      const textMatches = [...docXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
+      const extracted = textMatches.map(m => m[1]).join(" ").replace(/\s+/g, " ").trim();
+      setFileContent(extracted);
+    } catch(e) {
+      // Fallback: read as plain text (for .txt files)
+      const r = new FileReader();
+      r.onload = e2 => setFileContent(e2.target.result);
+      r.readAsText(f);
+    }
   };
 
   const steps = ["Lecture du document…","Chargement des consignes…","Analyse forme et fond…","Vérification terminologique…","Génération des corrections…"];
