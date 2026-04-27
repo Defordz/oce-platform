@@ -243,7 +243,58 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette st
   const acceptAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "accepted"); setStatuses(m); };
   const rejectAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "rejected"); setStatuses(m); };
 
-  const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+  // Apply Track Changes across runs in a paragraph
+  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => {
+    const RUN_RE = /(<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>)/g;
+    let result = paraXml;
+
+    for (const { original, suggested } of corrections) {
+      const runMatches = [...result.matchAll(RUN_RE)];
+      if (!runMatches.length) continue;
+
+      const texts = runMatches.map(m => {
+        const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+        return t ? t[1] : "";
+      });
+      const combined = texts.join("");
+      const pos = combined.indexOf(original);
+      if (pos === -1) continue;
+
+      const end = pos + original.length;
+      let cum = 0, startRun = null, endRun = null;
+      for (let i = 0; i < texts.length; i++) {
+        const runEnd = cum + texts[i].length;
+        if (startRun === null && runEnd > pos) startRun = i;
+        if (runEnd >= end) { endRun = i; break; }
+        cum += texts[i].length;
+      }
+      if (startRun === null || endRun === null) continue;
+
+      // Get formatting from first run
+      const firstRunXml = runMatches[startRun][0];
+      const rprMatch = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+      const rpr = rprMatch ? rprMatch[0] : "";
+
+      // Text before/after match within the spanned runs
+      const spanStart = texts.slice(0, startRun).join("").length;
+      const spanEnd = texts.slice(0, endRun + 1).join("").length;
+      const preText = combined.slice(spanStart, pos);
+      const postText = combined.slice(end, spanEnd);
+
+      const preXml = preText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>` : "";
+      const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
+      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(original)}</w:delText></w:r></w:del>`;
+      const insBlock = `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
+      const replacement = preXml + delBlock + insBlock + postXml;
+
+      const firstStart = runMatches[startRun].index;
+      const lastEnd = runMatches[endRun].index + runMatches[endRun][0].length;
+      result = result.slice(0, firstStart) + replacement + result.slice(lastEnd);
+    }
+    return result;
+  };
 
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
@@ -254,31 +305,15 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette st
       const zip = await JSZip.loadAsync(fileBytes);
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
-      let xml = docXml;
-      let changeId = 100;
+      const changeId = [100];
 
-      for (const c of accepted) {
-        const safeOrig = escXml(c.original);
-        const safeSugg = escXml(c.suggested);
+      // Process paragraph by paragraph
+      const correctionsList = accepted.map(c => ({ original: c.original, suggested: c.suggested }));
+      const result = docXml.replace(/(<w:p[ >][\s\S]*?<\/w:p>)/g, (para) =>
+        applyTrackChangesToPara(para, correctionsList, changeId, date)
+      );
 
-        // Match <w:t> (with optional xml:space attr) containing exactly the original text
-        // Replace the content inside the run's <w:t> with del+ins pair, keeping the run wrapper
-        const regex = new RegExp(
-          `(<w:r(?:\s[^>]*)?>(?:<w:rPr>[\s\S]*?</w:rPr>)?)<w:t(?:[^>]*)>${safeOrig.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}</w:t>(</w:r>)`,
-          "g"
-        );
-
-        xml = xml.replace(regex, (match, runOpen, runClose) => {
-          const delRun = `${runOpen}<w:delText xml:space="preserve">${safeOrig}</w:delText>${runClose}`;
-          const insRun = `${runOpen}<w:t xml:space="preserve">${safeSugg}</w:t>${runClose}`;
-          return (
-            `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">${delRun}</w:del>` +
-            `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">${insRun}</w:ins>`
-          );
-        });
-      }
-
-      zip.file("word/document.xml", xml);
+      zip.file("word/document.xml", result);
       const blob = await zip.generateAsync({
         type: "blob",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
