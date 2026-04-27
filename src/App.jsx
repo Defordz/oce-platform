@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import JSZip from "jszip";
 
 // ── PALETTE ──
 const C = {
@@ -125,6 +126,7 @@ function CorrectionPage({consignes, history, setHistory}) {
   const [docType, setDocType] = useState("cp_fr");
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
+  const [fileBytes, setFileBytes] = useState(null);
   const [opts, setOpts] = useState({forme:true, fond:true, terminologie:true, bilingue:false});
   const [phase, setPhase] = useState("idle");
   const [loadStep, setLoadStep] = useState(0);
@@ -137,9 +139,14 @@ function CorrectionPage({consignes, history, setHistory}) {
 
   const handleFile = f => {
     setFileName(f.name);
+    // Read as text for Claude analysis
     const r = new FileReader();
     r.onload = e => setFileContent(e.target.result);
     r.readAsText(f);
+    // Read as binary for docx manipulation
+    const rb = new FileReader();
+    rb.onload = e => setFileBytes(e.target.result);
+    rb.readAsArrayBuffer(f);
   };
 
   const steps = ["Lecture du document…","Chargement des consignes…","Analyse forme et fond…","Vérification terminologique…","Génération des corrections…"];
@@ -239,23 +246,51 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette st
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
     if (!accepted.length) { alert("Aucune correction à télécharger."); return; }
+    if (!fileBytes) { alert("Veuillez uploader un fichier .docx pour utiliser cette fonctionnalité."); return; }
 
     try {
-      const res = await fetch("/api/export", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ corrections: accepted, fileName: fileName||"document", score, synthese, date: new Date().toLocaleDateString("fr-FR") }),
-      });
-      if (!res.ok) throw new Error("Export failed");
-      const blob = await res.blob();
+      const zip = await JSZip.loadAsync(fileBytes);
+      const docXml = await zip.file("word/document.xml").async("string");
+      const date = new Date().toISOString().split(".")[0] + "Z";
+      let xml = docXml;
+      let changeId = Math.floor(Math.random() * 9000) + 1000;
+
+      // Apply each accepted correction as Track Changes in the XML
+      for (const c of accepted) {
+        const orig = c.original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        // Escape XML special chars in replacement text
+        const safeOrig = c.original.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        const safeSugg = c.suggested.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+        const trackChange =
+          `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">` +
+          `<w:r><w:delText xml:space="preserve">${safeOrig}</w:delText></w:r></w:del>` +
+          `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}">` +
+          `<w:r><w:t xml:space="preserve">${safeSugg}</w:t></w:r></w:ins>`;
+
+        // Try to replace inside existing <w:t> runs
+        // Match the original text inside a <w:t> tag
+        const searchRegex = new RegExp(
+          `(<w:t[^>]*>)([^<]*?)` + orig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + `([^<]*?)(</w:t>)`,
+          "g"
+        );
+        xml = xml.replace(searchRegex, (match, open, before, after, close) => {
+          const beforeXml = before ? `<w:r><w:t xml:space="preserve">${before}</w:t></w:r>` : "";
+          const afterXml = after ? `<w:r><w:t xml:space="preserve">${after}</w:t></w:r>` : "";
+          return `${close}${beforeXml}${trackChange}${afterXml}${open}`;
+        });
+      }
+
+      zip.file("word/document.xml", xml);
+      const blob = await zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = (fileName||"document").replace(/\.[^.]+$/, "") + "_corrige.doc";
+      a.download = (fileName||"document").replace(/\.docx$/i, "") + "_corrections.docx";
       a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      alert("Erreur lors de l'export Word.");
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch(e) {
+      alert("Erreur lors de la génération du fichier : " + e.message);
     }
   };
 
