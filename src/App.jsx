@@ -148,7 +148,7 @@ function CorrectionPage({consignes, history, setHistory}) {
       const docXml = await zip.file("word/document.xml").async("string");
       // Extract text from all w:t tags
       const textMatches = [...docXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
-      const extracted = textMatches.map(m => m[1]).join(" ").replace(/\s+/g, " ").trim();
+      const extracted = textMatches.map(m => m[1]).join("").replace(/[ \t]+/g, " ").trim();
       setFileContent(extracted);
     } catch(e) {
       // Fallback: read as plain text (for .txt files)
