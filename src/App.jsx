@@ -176,24 +176,55 @@ function CorrectionPage({consignes, history, setHistory}) {
       .map(c => `[${c.code}] ${c.label}: ${c.text.substring(0,150)}`)
       .join("\n");
 
-    const prompt = `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
+    const formeInstructions = opts.forme ? `
+CORRECTIONS DE FORME (OBLIGATOIRE - cherche toutes les erreurs suivantes):
+- Fautes d'orthographe: mots mal écrits, lettres manquantes ou en trop (ex: "dsd", "pds" insérés dans les mots)
+- Mots parasites insérés dans d'autres mots (ex: "dsdmet" → "met", "pdsour" → "pour", "indstéressés" → "intéressés")
+- Erreurs de frappe évidentes
+- Problèmes de typographie (guillemets, espaces)
+- Majuscules manquantes ou incorrectes
+` : "";
 
-Types de corrections actives: ${activeOpts}
+    const fondInstructions = opts.fond ? `
+CORRECTIONS DE FOND (OBLIGATOIRE - cherche toutes les erreurs suivantes):
+- Formulations juridiques incorrectes selon la loi n°104-12
+- Structure du document non conforme
+- Qualifications juridiques erronées (ex: "opération de projet de concentration" → "opération de concentration")
+- Références légales incorrectes
+- Incohérences dans la désignation des parties
+` : "";
+
+    const terminologieInstructions = opts.terminologie ? `
+TERMINOLOGIE (cherche les termes non conformes):
+${consignesText}
+` : "";
+
+    const prompt = `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
+Tu dois analyser le document et trouver TOUTES les erreurs présentes.
+
 Type de document: ${docType}
 
-CONSIGNES DE CORRECTION:
-${consignesText}
+${formeInstructions}
+${fondInstructions}
+${terminologieInstructions}
 
 DOCUMENT À CORRIGER:
 ${text.substring(0, 6000)}${text.length > 6000 ? "...[tronqué]" : ""}
 
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette structure exacte:
+RÈGLES IMPORTANTES:
+- Le champ "original" doit contenir EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot
+- Le champ "suggested" contient la correction
+- Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
+- Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
+- Ne pas inventer des erreurs qui n'existent pas
+
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 {
   "corrections": [
     {
       "type": "forme|fond|terminologie|bilingue",
-      "code": "code de la consigne ex: F-01",
-      "original": "texte original incorrect",
+      "code": "F-01 ou vide si pas de consigne applicable",
+      "original": "texte exact du document avec l'erreur",
       "suggested": "texte corrigé",
       "reason": "explication courte"
     }
