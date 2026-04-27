@@ -703,7 +703,37 @@ function ConsignesPage({consignes, setConsignes}) {
                 setConsignes(CONSIGNES_2025.map(c => ({...c, created: new Date().toLocaleDateString("fr-FR")})));
               }
             }} style={{padding:"7px 14px",border:`1px solid ${C.gold}`,borderRadius:7,background:"#fdf5e0",color:C.amber,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              ⬇ Importer 2025
+              ⬇ Fiches 2025
+            </button>
+            <button onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".json";
+              input.onchange = async e => {
+                try {
+                  const text = await e.target.files[0].text();
+                  const data = JSON.parse(text);
+                  const fiches = data.consignes || data;
+                  if (!Array.isArray(fiches)) throw new Error("Format invalide");
+                  if (!window.confirm(`Importer ${fiches.length} fiches depuis le fichier JSON ?\nLes consignes existantes seront remplacées.`)) return;
+                  setConsignes(fiches);
+                } catch(err) {
+                  alert("Erreur : " + err.message);
+                }
+              };
+              input.click();
+            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
+              📂 Importer JSON
+            </button>
+            <button onClick={() => {
+              const data = JSON.stringify({version:"1.0",source:"OCE Platform",created:new Date().toLocaleDateString("fr-FR"),count:consignes.length,consignes}, null, 2);
+              const blob = new Blob([data], {type:"application/json"});
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = "fiches_consignes.json"; a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
+              💾 Exporter JSON
             </button>
             <button onClick={newC} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>+ Nouvelle consigne</button>
           </div>
