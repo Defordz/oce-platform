@@ -166,8 +166,8 @@ function CorrectionPage({consignes, history, setHistory}) {
 
     const consignesText = consignes
       .filter(c => c.doctype === docType || c.doctype === "bilingue" || c.doctype === "tous")
-      .map(c => `[${c.code}] ${c.label}\nRègle: ${c.text}\nExemples: ${c.examples}`)
-      .join("\n\n");
+      .map(c => `[${c.code}] ${c.label}: ${c.text.substring(0,150)}`)
+      .join("\n");
 
     const prompt = `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
 
@@ -178,7 +178,7 @@ CONSIGNES DE CORRECTION:
 ${consignesText}
 
 DOCUMENT À CORRIGER:
-${text}
+${text.substring(0, 6000)}${text.length > 6000 ? "...[tronqué]" : ""}
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette structure exacte:
 {
