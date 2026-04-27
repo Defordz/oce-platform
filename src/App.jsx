@@ -632,6 +632,32 @@ function DashboardPage({history}) {
   );
 }
 
+// ── CONSIGNES FORM HELPERS (must be outside ConsignesPage to preserve focus) ──
+function FInput({label, field, ph, area, form, setForm}) {
+  return (
+    <div>
+      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
+      {area
+        ? <textarea value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} rows={area} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text,resize:"vertical",lineHeight:1.5}}/>
+        : <input value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}/>
+      }
+    </div>
+  );
+}
+
+function FSel({label, field, opts, form, setForm}) {
+  return (
+    <div>
+      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
+      <select value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
+        {opts.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </div>
+  );
+}
+
+const CODE_PREFIX = {FORME:"F",FOND:"D",TERMINOLOGIE:"T",BILINGUE:"B"};
+
 // ── CONSIGNES ──
 function ConsignesPage({consignes, setConsignes}) {
   const [selected, setSelected] = useState(null);
@@ -645,7 +671,20 @@ function ConsignesPage({consignes, setConsignes}) {
   const selC = selected ? consignes.find(c => c.id===selected) : null;
 
   const selectC = c => { setSelected(c.id); setForm({...c}); setIsNew(false); setSaved(false); };
-  const newC = () => { setSelected(null); setIsNew(true); setSaved(false); setForm({code:"",doctype:"cp_fr",category:"FORME",label:"",text:"",examples:"",notes:"",version:"1.0"}); };
+  const autoCode = (category, existing) => {
+    const prefix = CODE_PREFIX[category] || "X";
+    const nums = existing
+      .filter(c => c.code && c.code.startsWith(prefix+"-"))
+      .map(c => parseInt(c.code.split("-")[1])||0);
+    const next = nums.length ? Math.max(...nums)+1 : 1;
+    return `${prefix}-${String(next).padStart(2,"0")}`;
+  };
+  const newC = () => {
+    const cat = "FORME";
+    const code = autoCode(cat, consignes);
+    setSelected(null); setIsNew(true); setSaved(false);
+    setForm({code, id:code, doctype:"cp_fr", category:cat, label:"", text:"", examples:"", notes:"", version:"1.0"});
+  };
 
   const save = () => {
     if (!form.code || !form.label || !form.text) return;
@@ -672,24 +711,7 @@ function ConsignesPage({consignes, setConsignes}) {
     setSelected(nc.id); setForm({...nc}); setIsNew(false);
   };
 
-  const FInput = ({label, field, ph, area}) => (
-    <div>
-      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
-      {area
-        ? <textarea value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} rows={area} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text,resize:"vertical",lineHeight:1.5}}/>
-        : <input value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}/>
-      }
-    </div>
-  );
 
-  const FSel = ({label, field, opts}) => (
-    <div>
-      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
-      <select value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
-        {opts.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </div>
-  );
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
@@ -786,14 +808,23 @@ function ConsignesPage({consignes, setConsignes}) {
                 {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red}}>Supprimer</button>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}>
-                <FInput label="Code" field="code" ph="ex : F-01"/>
-                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["tous","Tous types"]]}/>
-                <FSel label="Catégorie" field="category" opts={[["FORME","Forme"],["FOND","Fond"],["TERMINOLOGIE","Terminologie"],["BILINGUE","Bilingue"]]}/>
+                <FInput label="Code" field="code" ph="ex : F-01" form={form} setForm={setForm}/>
+                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["tous","Tous types"]]} form={form} setForm={setForm}/>
+                <div>
+                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Catégorie</div>
+                <select value={form.category||""} onChange={e => {
+                  const cat = e.target.value;
+                  const newCode = isNew ? autoCode(cat, consignes) : form.code;
+                  setForm(f => ({...f, category:cat, code:newCode, id:newCode}));
+                }} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
+                  {[["FORME","Forme"],["FOND","Fond"],["TERMINOLOGIE","Terminologie"],["BILINGUE","Bilingue"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
               </div>
-              <FInput label="Intitulé de la consigne" field="label" ph="ex : Formule d'ouverture FR"/>
-              <FInput label="Description / règle complète" field="text" ph="Décrire la règle de correction, les formulations correctes, les erreurs à détecter…" area={4}/>
-              <FInput label="Exemples (incorrect → correct)" field="examples" ph="Incorrect : xxx → Correct : yyy" area={3}/>
-              <FInput label="Notes / source" field="notes" ph="ex : Article 13 loi n°104-12"/>
+              </div>
+              <FInput label="Intitulé de la consigne" field="label" ph="ex : Formule d'ouverture FR" form={form} setForm={setForm}/>
+              <FInput label="Description / règle complète" field="text" ph="Décrire la règle de correction, les formulations correctes, les erreurs à détecter…" area={4} form={form} setForm={setForm}/>
+              <FInput label="Exemples (incorrect → correct)" field="examples" ph="Incorrect : xxx → Correct : yyy" area={3} form={form} setForm={setForm}/>
+              <FInput label="Notes / source" field="notes" ph="ex : Article 13 loi n°104-12" form={form} setForm={setForm}/>
               {!isNew && <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>Créé le {selC?.created} · Version {selC?.version}</div>}
             </>
           )}
