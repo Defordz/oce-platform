@@ -217,7 +217,8 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks, avec cette st
       }
 
       const data = await res.json();
-      const raw = data.content[0].text.trim();
+      const raw = data.content[0].text.trim().replace(/^```[a-z]*
+?/,"").replace(/```$/,"").trim();
       const parsed = JSON.parse(raw);
 
       setCorrections(parsed.corrections || []);
