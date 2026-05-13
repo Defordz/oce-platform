@@ -887,8 +887,35 @@ function UtilisateursPage() {
 // ── ROOT ──
 export default function App() {
   const [page, setPage] = useState("correction");
-  const [consignes, setConsignes] = useState(DEFAULT_CONSIGNES);
   const [history, setHistory] = useState([]);
+
+  // ── PERSISTANCE localStorage ──
+  // Charge les consignes sauvegardées, sinon utilise les consignes par défaut
+  const [consignes, setConsignes] = useState(() => {
+    try {
+      const saved = localStorage.getItem("oce_consignes");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn("Erreur lecture localStorage:", e);
+    }
+    return DEFAULT_CONSIGNES;
+  });
+
+  // Sauvegarde automatique à chaque modification des consignes
+  const setConsignesWithSave = (updater) => {
+    setConsignes(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      try {
+        localStorage.setItem("oce_consignes", JSON.stringify(next));
+      } catch (e) {
+        console.warn("Erreur écriture localStorage:", e);
+      }
+      return next;
+    });
+  };
 
   return (
     <>
@@ -906,7 +933,7 @@ export default function App() {
           {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="historique"    && <HistoriquePage history={history}/>}
           {page==="dashboard"     && <DashboardPage history={history}/>}
-          {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignes}/>}
+          {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignesWithSave}/>}
           {page==="utilisateurs"  && <UtilisateursPage/>}
         </main>
       </div>
