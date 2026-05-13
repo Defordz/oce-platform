@@ -304,58 +304,144 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
   const acceptAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "accepted"); setStatuses(m); };
   const rejectAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "rejected"); setStatuses(m); };
 
-  const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const escXml = s => s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
-  // Apply Track Changes across runs in a paragraph
-  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => {
-    const RUN_RE = /(<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>)/g;
-    let result = paraXml;
+  // ── NORMALISATION : rend les caractères spéciaux comparables ──
+  // Transforme espaces insécables, apostrophes typographiques, guillemets
+  // en leurs équivalents simples pour permettre la recherche de texte
+  const norm = s => s
+    .replace(/ /g, " ")    // espace insécable → espace
+    .replace(/ /g, " ")    // espace fine insécable → espace
+    .replace(/’/g, "'")    // apostrophe typographique ' → '
+    .replace(/‘/g, "'")    // apostrophe ouvrante ' → '
+    .replace(/“/g, '"')    // guillemet anglais ouvrant
+    .replace(/”/g, '"')    // guillemet anglais fermant
+    .replace(/«/g, "«") // garder « tel quel
+    .replace(/»/g, "»") // garder » tel quel
+    .replace(/[ 	]+/g, " ")    // espaces multiples → un seul
+    .trim();
+
+  // ── APPLY TRACK CHANGES : approche document-level inverse ──
+  // Traite les corrections de la FIN vers le DÉBUT du XML
+  // pour éviter que chaque remplacement invalide les positions suivantes
+  const applyAllTrackChanges = (docXml, corrections, date) => {
+    let changeId = 200;
+
+    // Normalise pour la recherche (espaces insécables, apostrophes typo, etc.)
+    const norm = s => s
+      .replace(/ /g, " ")
+      .replace(/ /g, " ")
+      .replace(/’/g, "'")
+      .replace(/‘/g, "'")
+      .replace(/“/g, '"')
+      .replace(/”/g, '"')
+      .replace(/[ 	]+/g, " ")
+      .trim();
+
+    // Pour chaque correction, trouver sa position dans le XML
+    // puis trier par position décroissante avant d'appliquer
+    const toApply = [];
 
     for (const { original, suggested } of corrections) {
-      const runMatches = [...result.matchAll(RUN_RE)];
-      if (!runMatches.length) continue;
+      if (!original || !suggested || original === suggested) continue;
 
-      const texts = runMatches.map(m => {
-        const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-        return t ? t[1] : "";
-      });
-      const combined = texts.join("");
-      const pos = combined.indexOf(original);
-      if (pos === -1) continue;
-
-      const end = pos + original.length;
-      let cum = 0, startRun = null, endRun = null;
-      for (let i = 0; i < texts.length; i++) {
-        const runEnd = cum + texts[i].length;
-        if (startRun === null && runEnd > pos) startRun = i;
-        if (runEnd >= end) { endRun = i; break; }
-        cum += texts[i].length;
+      // Extraire tous les runs avec leurs positions XML
+      const RUN_RE = /<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>/g;
+      const runs = [];
+      let m;
+      RUN_RE.lastIndex = 0;
+      while ((m = RUN_RE.exec(docXml)) !== null) {
+        const tMatch = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+        runs.push({
+          xml: m[0],
+          text: tMatch ? tMatch[1] : "",
+          xmlStart: m.index,
+          xmlEnd: m.index + m[0].length,
+        });
       }
-      if (startRun === null || endRun === null) continue;
 
-      // Get formatting from first run
-      const firstRunXml = runMatches[startRun][0];
-      const rprMatch = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+      // Texte complet du document (raw + normalisé)
+      const rawFull = runs.map(r => r.text).join("");
+      const normFull = norm(rawFull);
+      const normOrig = norm(original);
+
+      const normPos = normFull.indexOf(normOrig);
+      if (normPos === -1) {
+        console.warn("[TC] Non trouvé:", JSON.stringify(original.substring(0, 50)));
+        continue;
+      }
+
+      // Mapper position normalisée → position raw caractère par caractère
+      let rawPos = 0, nPos = 0;
+      while (nPos < normPos && rawPos < rawFull.length) {
+        const ch = rawFull[rawPos];
+        const nch = norm(ch) || " ";
+        nPos += nch.length;
+        rawPos++;
+      }
+      const rawStart = rawPos;
+      const rawEnd = rawStart + original.length;
+
+      // Identifier les runs couverts
+      let cum = 0;
+      let startRunIdx = null, endRunIdx = null;
+      for (let i = 0; i < runs.length; i++) {
+        const runEnd = cum + runs[i].text.length;
+        if (startRunIdx === null && runEnd > rawStart) startRunIdx = i;
+        if (endRunIdx === null && runEnd >= rawEnd) { endRunIdx = i; break; }
+        cum += runs[i].text.length;
+      }
+
+      if (startRunIdx === null || endRunIdx === null) {
+        console.warn("[TC] Runs non trouvés:", JSON.stringify(original.substring(0, 50)));
+        continue;
+      }
+
+      // Récupérer la mise en forme du premier run
+      const rprMatch = runs[startRunIdx].xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
       const rpr = rprMatch ? rprMatch[0] : "";
 
-      // Text before/after match within the spanned runs
-      const spanStart = texts.slice(0, startRun).join("").length;
-      const spanEnd = texts.slice(0, endRun + 1).join("").length;
-      const preText = combined.slice(spanStart, pos);
-      const postText = combined.slice(end, spanEnd);
+      // Texte exact dans le document (avec vrais caractères)
+      const spanStart = runs.slice(0, startRunIdx).reduce((s, r) => s + r.text.length, 0);
+      const spanEnd = runs.slice(0, endRunIdx + 1).reduce((s, r) => s + r.text.length, 0);
+      const preText = rawFull.slice(spanStart, rawStart);
+      const postText = rawFull.slice(rawEnd, spanEnd);
+      const actualOriginal = rawFull.slice(rawStart, rawEnd);
 
-      const preXml = preText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>` : "";
-      const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
-      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(original)}</w:delText></w:r></w:del>`;
-      const insBlock = `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
-      const replacement = preXml + delBlock + insBlock + postXml;
+      // Position dans le XML (pour tri inverse)
+      const xmlStart = runs[startRunIdx].xmlStart;
+      const xmlEnd = runs[endRunIdx].xmlEnd;
 
-      const firstStart = runMatches[startRun].index;
-      const lastEnd = runMatches[endRun].index + runMatches[endRun][0].length;
-      result = result.slice(0, firstStart) + replacement + result.slice(lastEnd);
+      toApply.push({ xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr });
+      console.log(`[TC] ✅ Trouvé: "${actualOriginal.substring(0, 40)}" → "${suggested.substring(0, 40)}"`);
     }
+
+    // Trier par position XML décroissante (fin → début)
+    // Ainsi chaque remplacement n'invalide pas les positions des suivants
+    toApply.sort((a, b) => b.xmlStart - a.xmlStart);
+
+    // Appliquer les remplacements dans l'ordre inverse
+    let result = docXml;
+    for (const { xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr } of toApply) {
+      const preXml  = preText  ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>`  : "";
+      const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
+      const delXml  = `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(actualOriginal)}</w:delText></w:r></w:del>`;
+      const insXml  = `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
+      const replacement = preXml + delXml + insXml + postXml;
+      result = result.slice(0, xmlStart) + replacement + result.slice(xmlEnd);
+    }
+
     return result;
   };
+
+  // Stub pour compatibilité
+  const applyTrackChangesToPara = (paraXml) => paraXml;
+
+  // Ancienne fonction gardée pour compatibilité (non utilisée)
+  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => paraXml;
 
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
@@ -366,13 +452,9 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const zip = await JSZip.loadAsync(fileBytes);
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
-      const changeId = [100];
 
-      // Process paragraph by paragraph
       const correctionsList = accepted.map(c => ({ original: c.original, suggested: c.suggested }));
-      const result = docXml.replace(/(<w:p[ >][\s\S]*?<\/w:p>)/g, (para) =>
-        applyTrackChangesToPara(para, correctionsList, changeId, date)
-      );
+      const result = applyAllTrackChanges(docXml, correctionsList, date);
 
       zip.file("word/document.xml", result);
       const blob = await zip.generateAsync({
@@ -659,7 +741,7 @@ function FSel({label, field, opts, form, setForm}) {
 const CODE_PREFIX = {FORME:"F",FOND:"D",TERMINOLOGIE:"T",BILINGUE:"B"};
 
 // ── CONSIGNES ──
-function ConsignesPage({consignes, setConsignes}) {
+function ConsignesPage({consignes, setConsignes, onReload, syncStatus}) {
   const [selected, setSelected] = useState(null);
   const [filterType, setFilterType] = useState("");
   const [filterCat, setFilterCat] = useState("");
@@ -885,10 +967,72 @@ function UtilisateursPage() {
 }
 
 // ── ROOT ──
+
+// ── ROOT ──
 export default function App() {
   const [page, setPage] = useState("correction");
-  const [consignes, setConsignes] = useState(DEFAULT_CONSIGNES);
   const [history, setHistory] = useState([]);
+  const [consignes, setConsignes] = useState(DEFAULT_CONSIGNES);
+  const [consignesSha, setConsignesSha] = useState(null);
+  const [syncStatus, setSyncStatus] = useState("loading");
+  const [syncMessage, setSyncMessage] = useState("");
+
+  // Charger les consignes depuis GitHub au démarrage
+  const loadConsignes = async () => {
+    setSyncStatus("loading");
+    try {
+      const res = await fetch("/api/get-consignes");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setConsignes(data.consignes);
+      setConsignesSha(data.sha);
+      setSyncStatus("idle");
+    } catch (err) {
+      console.warn("Chargement hors-ligne:", err);
+      setSyncStatus("error");
+      setSyncMessage("Hors-ligne — modifications non persistées");
+    }
+  };
+
+  // Utiliser useEffect pour le chargement initial
+  
+
+
+  // Chargement initial au montage du composant
+  useState(() => { loadConsignes(); return null; });
+
+  const saveConsignes = async (newConsignes, currentSha) => {
+    const sha = currentSha || consignesSha;
+    if (!sha) { setSyncStatus("error"); setSyncMessage("SHA manquant — rechargez"); return; }
+    setSyncStatus("saving");
+    try {
+      const res = await fetch("/api/save-consignes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ consignes: newConsignes, sha }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setConsignesSha(data.newSha);
+      setSyncStatus("saved");
+      setSyncMessage(`✓ Sauvegardé · commit ${data.commit.substring(0,7)}`);
+      setTimeout(() => setSyncStatus("idle"), 4000);
+    } catch (err) {
+      setSyncStatus("error");
+      setSyncMessage("Erreur de sauvegarde");
+    }
+  };
+
+  const setConsignesWithSave = (updater) => {
+    setConsignes(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      saveConsignes(next);
+      return next;
+    });
+  };
+
+  const syncColors = { loading:"#b8962e", saving:"#b8962e", saved:"#1a5c2a", error:"#8b1a1a", idle:null };
+  const syncIcons  = { loading:"⏳", saving:"💾", saved:"✓", error:"⚠️", idle:null };
 
   return (
     <>
@@ -900,14 +1044,22 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: #d8d3c8; border-radius: 2px; }
         input, select, textarea, button { font-family: inherit; }
       `}</style>
-      <div style={{display:"flex",height:"100vh",overflow:"hidden",background:C.cream}}>
-        <Sidebar page={page} setPage={setPage}/>
+      <div style={{display:"flex",height:"100vh",overflow:"hidden",background:"#f8f6f0"}}>
+        <div style={{display:"flex",flexDirection:"column",width:210,background:"#0f2650",flexShrink:0}}>
+          <Sidebar page={page} setPage={setPage}/>
+          {syncStatus !== "idle" && (
+            <div style={{padding:"7px 14px",background:"rgba(0,0,0,.25)",borderTop:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:7,marginTop:"auto"}}>
+              <span style={{fontSize:12}}>{syncIcons[syncStatus]}</span>
+              <span style={{fontSize:10,color:syncColors[syncStatus]||"#8a8aaa",lineHeight:1.3,flex:1}}>{syncMessage||syncStatus}</span>
+            </div>
+          )}
+        </div>
         <main style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
-          {page==="historique"    && <HistoriquePage history={history}/>}
-          {page==="dashboard"     && <DashboardPage history={history}/>}
-          {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignes}/>}
-          {page==="utilisateurs"  && <UtilisateursPage/>}
+          {page==="correction"   && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
+          {page==="historique"   && <HistoriquePage history={history}/>}
+          {page==="dashboard"    && <DashboardPage history={history}/>}
+          {page==="consignes"    && <ConsignesPage consignes={consignes} setConsignes={setConsignesWithSave} onReload={loadConsignes} syncStatus={syncStatus}/>}
+          {page==="utilisateurs" && <UtilisateursPage/>}
         </main>
       </div>
     </>
