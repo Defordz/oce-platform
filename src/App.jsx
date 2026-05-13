@@ -419,19 +419,32 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       console.log(`[TC] ✅ Trouvé: "${actualOriginal.substring(0, 40)}" → "${suggested.substring(0, 40)}"`);
     }
 
-    // Trier par position XML décroissante (fin → début)
-    // Ainsi chaque remplacement n'invalide pas les positions des suivants
-    toApply.sort((a, b) => b.xmlStart - a.xmlStart);
+    // Filtrer les corrections qui se chevauchent (garder la première par position)
+    toApply.sort((a, b) => a.xmlStart - b.xmlStart);
+    const filtered = [];
+    let lastEnd = -1;
+    for (const item of toApply) {
+      if (item.xmlStart >= lastEnd) {
+        filtered.push(item);
+        lastEnd = item.xmlEnd;
+      } else {
+        console.warn("[TC] Chevauchement ignoré:", item.actualOriginal?.substring(0, 30));
+      }
+    }
 
-    // Appliquer les remplacements dans l'ordre inverse
+    // Appliquer dans l'ordre croissant en ajustant l'offset cumulé
     let result = docXml;
-    for (const { xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr } of toApply) {
+    let offset = 0; // décalage cumulé dû aux remplacements précédents
+    for (const { xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr } of filtered) {
+      const adjStart = xmlStart + offset;
+      const adjEnd   = xmlEnd   + offset;
       const preXml  = preText  ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>`  : "";
       const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
       const delXml  = `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(actualOriginal)}</w:delText></w:r></w:del>`;
       const insXml  = `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
       const replacement = preXml + delXml + insXml + postXml;
-      result = result.slice(0, xmlStart) + replacement + result.slice(xmlEnd);
+      result = result.slice(0, adjStart) + replacement + result.slice(adjEnd);
+      offset += replacement.length - (xmlEnd - xmlStart);
     }
 
     return result;
