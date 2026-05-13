@@ -904,122 +904,162 @@ function ConsignesPage({consignes, setConsignes, onReload, syncStatus}) {
   const [selected, setSelected] = useState(null);
   const [filterType, setFilterType] = useState("");
   const [filterCat, setFilterCat] = useState("");
-  const [form, setForm] = useState({});
+
+  // Formulaire simplifié
+  const [form, setForm] = useState({code:"", doctype:"cp_fr", category:"FORME", label:"", description:"", examples:""});
   const [isNew, setIsNew] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const filtered = consignes.filter(c => (!filterType||c.doctype===filterType) && (!filterCat||c.category===filterCat));
-  const selC = selected ? consignes.find(c => c.id===selected) : null;
+  // Génération regex
+  const [generating, setGenerating] = useState(false);
+  const [regexResult, setRegexResult] = useState(null);
+  const [regexError, setRegexError] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const selectC = c => { setSelected(c.id); setForm({...c}); setIsNew(false); setSaved(false); };
-  const autoCode = (category, existing) => {
-    const prefix = CODE_PREFIX[category] || "X";
-    const nums = existing
-      .filter(c => c.code && c.code.startsWith(prefix+"-"))
-      .map(c => parseInt(c.code.split("-")[1])||0);
-    const next = nums.length ? Math.max(...nums)+1 : 1;
-    return `${prefix}-${String(next).padStart(2,"0")}`;
+  const filtered = consignes.filter(c =>
+    (!filterType || c.doctype === filterType) &&
+    (!filterCat  || c.category === filterCat)
+  );
+  const selC = selected ? consignes.find(c => c.id === selected) : null;
+
+  const selectC = c => {
+    setSelected(c.id);
+    setForm({ code:c.code, doctype:c.doctype, category:c.category,
+               label:c.label, description:c.text, examples:c.examples||"" });
+    setRegexResult(null); setRegexError(""); setIsNew(false); setSaved(false);
   };
+
   const newC = () => {
-    const cat = "FORME";
-    const code = autoCode(cat, consignes);
     setSelected(null); setIsNew(true); setSaved(false);
-    setForm({code, id:code, doctype:"cp_fr", category:cat, label:"", text:"", examples:"", notes:"", version:"1.0"});
+    setForm({ code:"", doctype:"cp_fr", category:"FORME", label:"", description:"", examples:"" });
+    setRegexResult(null); setRegexError("");
   };
 
-  const save = () => {
-    if (!form.code || !form.label || !form.text) return;
-    if (isNew) {
-      const nc = {...form, id:form.code, created:new Date().toLocaleDateString("fr-FR")};
-      setConsignes(c => [...c, nc]);
-      setSelected(nc.id); setIsNew(false);
-    } else {
-      setConsignes(cs => cs.map(c => c.id===selected ? {...c,...form,version:(parseFloat(c.version)+0.1).toFixed(1)} : c));
+  // ── Générer la regex via Claude ──
+  const generateRegex = async () => {
+    if (!form.description) { setRegexError("Décris la règle d'abord."); return; }
+    setGenerating(true); setRegexResult(null); setRegexError("");
+    try {
+      const res = await fetch("/api/generate-regex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          description: form.description,
+          examples: form.examples,
+          doctype: form.doctype,
+          category: form.category,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setRegexResult(data);
+    } catch (err) {
+      setRegexError("Erreur lors de la génération : " + err.message);
     }
-    setSaved(true); setTimeout(() => setSaved(false), 2000);
+    setGenerating(false);
+  };
+
+  // ── Sauvegarder ──
+  const save = () => {
+    if (!form.code || !form.label || !form.description) {
+      setRegexError("Code, intitulé et description sont obligatoires."); return;
+    }
+    const existing = consignes.find(c => c.id === selected);
+    const newVersion = existing ? (parseFloat(existing.version||"1.0")+0.1).toFixed(1) : "1.0";
+    const consigne = {
+      id: isNew ? form.code : selected,
+      code: form.code,
+      doctype: form.doctype,
+      category: form.category,
+      label: form.label,
+      text: form.description,
+      examples: form.examples,
+      notes: "",
+      regex: regexResult?.regex || (existing?.regex ?? null),
+      created: existing?.created || new Date().toLocaleDateString("fr-FR"),
+      version: newVersion,
+    };
+    if (isNew) {
+      setConsignes(cs => [...cs, consigne]);
+      setSelected(consigne.id); setIsNew(false);
+    } else {
+      setConsignes(cs => cs.map(c => c.id === selected ? consigne : c));
+    }
+    setSaved(true); setTimeout(() => setSaved(false), 3000);
+    setRegexError("");
   };
 
   const del = () => {
     if (!selected || !confirm("Supprimer cette consigne ?")) return;
     setConsignes(cs => cs.filter(c => c.id !== selected));
-    setSelected(null); setIsNew(false);
+    setSelected(null); setIsNew(false); setRegexResult(null);
   };
 
-  const dup = () => {
-    const c = consignes.find(x => x.id===selected); if (!c) return;
-    const nc = {...c, id:c.code+"-bis", code:c.code+"-bis", created:new Date().toLocaleDateString("fr-FR"), version:"1.0"};
-    setConsignes(cs => [...cs, nc]);
-    setSelected(nc.id); setForm({...nc}); setIsNew(false);
-  };
+  const FInput = ({label, field, ph, area, mono}) => (
+    <div>
+      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
+      {area
+        ? <textarea value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} placeholder={ph} rows={area}
+            style={{width:"100%",padding:"8px 11px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:mono?"monospace":"inherit",fontSize:mono?11:12,color:C.text,resize:"vertical",lineHeight:1.5}}/>
+        : <input value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} placeholder={ph}
+            style={{width:"100%",padding:"8px 11px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}/>
+      }
+    </div>
+  );
 
+  const FSel = ({label, field, opts}) => (
+    <div>
+      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
+      <select value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))}
+        style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
+        {opts.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </div>
+  );
 
+  const testColor = t => t.passes ? C.green : C.red;
+  const testBg    = t => t.passes ? C.greenLight : C.redLight;
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
         title="Fiches de consignes"
-        sub={`Règles de correction par type de document — ${consignes.length} consignes`}
+        sub={`${consignes.length} consignes · Décris en français, Claude génère la règle`}
         right={
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={() => {
-              if(window.confirm(`Importer les ${CONSIGNES_2025.length} fiches officielles 2025 ? Les consignes existantes seront remplacées.`)) {
-                setConsignes(CONSIGNES_2025.map(c => ({...c, created: new Date().toLocaleDateString("fr-FR")})));
-              }
-            }} style={{padding:"7px 14px",border:`1px solid ${C.gold}`,borderRadius:7,background:"#fdf5e0",color:C.amber,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              ⬇ Fiches 2025
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button onClick={onReload} style={{padding:"6px 12px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",fontSize:12,cursor:"pointer",color:C.text2}}>
+              🔄 {syncStatus==="loading"?"…":"Sync"}
             </button>
-            <button onClick={() => {
-              const input = document.createElement("input");
-              input.type = "file";
-              input.accept = ".json";
-              input.onchange = async e => {
-                try {
-                  const text = await e.target.files[0].text();
-                  const data = JSON.parse(text);
-                  const fiches = data.consignes || data;
-                  if (!Array.isArray(fiches)) throw new Error("Format invalide");
-                  if (!window.confirm(`Importer ${fiches.length} fiches depuis le fichier JSON ?\nLes consignes existantes seront remplacées.`)) return;
-                  setConsignes(fiches);
-                } catch(err) {
-                  alert("Erreur : " + err.message);
-                }
-              };
-              input.click();
-            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              📂 Importer JSON
+            <button onClick={newC} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
+              + Nouvelle consigne
             </button>
-            <button onClick={() => {
-              const data = JSON.stringify({version:"1.0",source:"OCE Platform",created:new Date().toLocaleDateString("fr-FR"),count:consignes.length,consignes}, null, 2);
-              const blob = new Blob([data], {type:"application/json"});
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url; a.download = "fiches_consignes.json"; a.click();
-              setTimeout(() => URL.revokeObjectURL(url), 1000);
-            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              💾 Exporter JSON
-            </button>
-            <button onClick={newC} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>+ Nouvelle consigne</button>
           </div>
         }
       />
-      <div style={{flex:1,padding:"18px 30px",overflow:"hidden",display:"grid",gridTemplateColumns:"255px 1fr",gap:14}}>
-        {/* Liste */}
+      <div style={{flex:1,padding:"16px 28px",overflow:"hidden",display:"grid",gridTemplateColumns:"240px 1fr",gap:14}}>
+
+        {/* ── LISTE ── */}
         <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          <div style={{padding:"10px 12px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:5}}>
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{flex:1,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+          <div style={{padding:"9px 11px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:5}}>
+            <select value={filterType} onChange={e=>setFilterType(e.target.value)}
+              style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
               <option value="">Tous types</option>
-              {Object.entries(TYPE_LABELS).filter(([k]) => k!=="tous").map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+              {Object.entries(TYPE_LABELS).filter(([k])=>k!=="tous").map(([v,l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{flex:1,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+            <select value={filterCat} onChange={e=>setFilterCat(e.target.value)}
+              style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
               <option value="">Toutes</option>
-              {["FORME","FOND","TERMINOLOGIE","BILINGUE"].map(c => <option key={c} value={c}>{c}</option>)}
+              {["FORME","FOND","TERMINOLOGIE","BILINGUE"].map(c=><option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div style={{overflowY:"auto",flex:1}}>
             {filtered.map(c => (
-              <div key={c.id} onClick={() => selectC(c)} style={{padding:"8px 12px",borderBottom:`1px solid ${C.cream2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:7,background:selected===c.id?"#edf2ff":"#fff",borderLeft:selected===c.id?`3px solid ${C.navy2}`:"3px solid transparent",transition:"all .1s"}}>
-                <span style={{fontSize:9.5,fontWeight:600,color:C.text3,minWidth:32,fontFamily:"monospace"}}>{c.code}</span>
+              <div key={c.id} onClick={()=>selectC(c)} style={{padding:"8px 11px",borderBottom:`1px solid ${C.cream2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:7,background:selected===c.id?"#edf2ff":"#fff",borderLeft:selected===c.id?`3px solid ${C.navy2}`:"3px solid transparent",transition:"all .1s"}}>
                 <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                    <span style={{fontSize:9.5,fontWeight:600,color:C.text3,fontFamily:"monospace"}}>{c.code}</span>
+                    {c.regex && <span style={{fontSize:8,background:"#e8f5ec",color:C.green,padding:"1px 5px",borderRadius:10,fontWeight:600}}>AUTO</span>}
+                  </div>
                   <div style={{fontSize:11,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</div>
                   <div style={{fontSize:9.5,color:C.text3,marginTop:1}}>{TYPE_LABELS[c.doctype]||c.doctype}</div>
                 </div>
@@ -1028,45 +1068,171 @@ function ConsignesPage({consignes, setConsignes, onReload, syncStatus}) {
             ))}
             {filtered.length === 0 && <div style={{padding:18,fontSize:12,color:C.text3,textAlign:"center"}}>Aucune consigne</div>}
           </div>
-          <div style={{padding:"7px 12px",borderTop:`1px solid ${C.cream2}`,fontSize:9.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
+          <div style={{padding:"6px 11px",borderTop:`1px solid ${C.cream2}`,fontSize:9.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
         </div>
 
-        {/* Éditeur */}
-        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
+        {/* ── ÉDITEUR SIMPLIFIÉ ── */}
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:14}}>
           {!selected && !isNew ? (
             <div style={{textAlign:"center",padding:"44px 20px",color:C.text3}}>
-              <div style={{fontSize:30,marginBottom:9,opacity:.25}}>📋</div>
-              <p style={{fontSize:12.5}}>Sélectionnez une consigne ou créez-en une nouvelle</p>
+              <div style={{fontSize:32,marginBottom:10,opacity:.2}}>✏️</div>
+              <p style={{fontSize:13,lineHeight:1.7}}>Sélectionnez une consigne<br/>ou créez-en une nouvelle<br/><span style={{fontSize:11,color:C.text3}}>Décris la règle en français — Claude génère la regex</span></p>
             </div>
           ) : (
             <>
-              <div style={{display:"flex",alignItems:"center",gap:9,paddingBottom:12,borderBottom:`1px solid ${C.cream2}`}}>
-                <div style={{flex:1,fontSize:13,fontWeight:500,color:C.navy2}}>{isNew ? "Nouvelle consigne" : `Consigne ${selC?.code}`}</div>
+              {/* Toolbar */}
+              <div style={{display:"flex",alignItems:"center",gap:8,paddingBottom:12,borderBottom:`1px solid ${C.cream2}`}}>
+                <div style={{flex:1,fontSize:13,fontWeight:500,color:C.navy2}}>{isNew?"Nouvelle consigne":`Consigne ${selC?.code}`}</div>
                 {!isNew && <span style={{fontSize:9.5,padding:"2px 7px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>v{selC?.version}</span>}
-                {saved && <span style={{fontSize:10,color:C.green,fontWeight:500}}>✓ Enregistré</span>}
-                <button onClick={save} style={{padding:"5px 13px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Enregistrer</button>
-                {!isNew && <button onClick={dup} style={{padding:"5px 11px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:11,cursor:"pointer",color:C.text2}}>Dupliquer</button>}
-                {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red}}>Supprimer</button>}
+                {saved && <span style={{fontSize:10.5,color:C.green,fontWeight:500}}>✓ Enregistré</span>}
+                <button onClick={save} style={{padding:"5px 14px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Enregistrer</button>
+                {!isNew && <button onClick={del} style={{padding:"5px 10px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red}}>Supprimer</button>}
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}>
-                <FInput label="Code" field="code" ph="ex : F-01" form={form} setForm={setForm}/>
-                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["tous","Tous types"]]} form={form} setForm={setForm}/>
-                <div>
-                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Catégorie</div>
-                <select value={form.category||""} onChange={e => {
-                  const cat = e.target.value;
-                  const newCode = isNew ? autoCode(cat, consignes) : form.code;
-                  setForm(f => ({...f, category:cat, code:newCode, id:newCode}));
-                }} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
-                  {[["FORME","Forme"],["FOND","Fond"],["TERMINOLOGIE","Terminologie"],["BILINGUE","Bilingue"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+
+              {/* Champs de base */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                <FInput label="Code" field="code" ph="ex : F-13"/>
+                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["tous","Tous types"]]}/>
+                <FSel label="Catégorie" field="category" opts={[["FORME","Forme"],["FOND","Fond"],["TERMINOLOGIE","Terminologie"],["BILINGUE","Bilingue"]]}/>
               </div>
+              <FInput label="Intitulé court" field="label" ph="ex : Mention 'la société' avant dénominations"/>
+
+              {/* Zone principale — description en français */}
+              <div>
+                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>
+                  Décris la règle en français
+                </div>
+                <textarea value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))}
+                  placeholder="Ex : Dans le titre et dans le résumé non confidentiel, tout nom de société entre guillemets doit être précédé du mot 'la société'. Ne pas appliquer dans les rubriques L'acquéreur et La cible."
+                  rows={4} style={{width:"100%",padding:"10px 12px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:13,color:C.text,resize:"vertical",lineHeight:1.6}}/>
               </div>
-              <FInput label="Intitulé de la consigne" field="label" ph="ex : Formule d'ouverture FR" form={form} setForm={setForm}/>
-              <FInput label="Description / règle complète" field="text" ph="Décrire la règle de correction, les formulations correctes, les erreurs à détecter…" area={4} form={form} setForm={setForm}/>
-              <FInput label="Exemples (incorrect → correct)" field="examples" ph="Incorrect : xxx → Correct : yyy" area={3} form={form} setForm={setForm}/>
-              <FInput label="Notes / source" field="notes" ph="ex : Article 13 loi n°104-12" form={form} setForm={setForm}/>
-              {!isNew && <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>Créé le {selC?.created} · Version {selC?.version}</div>}
+
+              <div>
+                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>
+                  Exemples (optionnel — améliore la précision)
+                </div>
+                <textarea value={form.examples||""} onChange={e=>setForm(f=>({...f,examples:e.target.value}))}
+                  placeholder={"Incorrect : de «Adeesy SARLAU» aux côtés\nCorrect   : de la société «Adeesy SARLAU» aux côtés"}
+                  rows={3} style={{width:"100%",padding:"9px 12px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text,resize:"vertical",lineHeight:1.6}}/>
+              </div>
+
+              {/* Bouton génération */}
+              <button onClick={generateRegex} disabled={generating || !form.description}
+                style={{padding:"10px",border:"none",borderRadius:8,background:generating||!form.description?"#9ca3af":C.navy2,color:"#fff",fontSize:13,fontWeight:500,cursor:generating||!form.description?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all .15s"}}>
+                {generating
+                  ? <><div style={{width:16,height:16,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> Génération en cours…</>
+                  : <><span>⚡</span> Générer la règle automatique avec Claude</>
+                }
+              </button>
+
+              {regexError && (
+                <div style={{padding:"10px 12px",background:C.redLight,border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12,color:C.red}}>{regexError}</div>
+              )}
+
+              {/* ── RÉSULTAT GÉNÉRATION ── */}
+              {regexResult && (
+                <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+                  {/* Header */}
+                  <div style={{padding:"10px 14px",background:C.navy,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <span style={{fontSize:12,fontWeight:500,color:"#fff"}}>⚡ Règle automatique générée par Claude</span>
+                    <button onClick={()=>setShowAdvanced(s=>!s)} style={{fontSize:10,color:"rgba(255,255,255,.6)",background:"none",border:"none",cursor:"pointer"}}>
+                      {showAdvanced?"Masquer les regex":"Voir les regex"}
+                    </button>
+                  </div>
+
+                  <div style={{padding:"14px"}}>
+                    {/* Explication */}
+                    <div style={{fontSize:12.5,color:C.text2,lineHeight:1.6,marginBottom:14,padding:"10px 12px",background:C.cream2,borderRadius:7}}>
+                      💡 {regexResult.explication}
+                    </div>
+
+                    {/* Regex (mode avancé) */}
+                    {showAdvanced && regexResult.regex && (
+                      <div style={{marginBottom:14}}>
+                        <div style={{fontSize:10,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Patterns générés</div>
+                        {(Array.isArray(regexResult.regex)?regexResult.regex:[regexResult.regex]).map((pat,i) => (
+                          <div key={i} style={{background:"#1e1e2e",borderRadius:6,padding:"10px 12px",marginBottom:6,fontFamily:"monospace",fontSize:11}}>
+                            <div style={{color:"#88c0d0",marginBottom:3}}>// {pat.label||"Pattern "+(i+1)}</div>
+                            <div style={{color:"#a3be8c"}}>find    : <span style={{color:"#ebcb8b"}}>{pat.find}</span></div>
+                            <div style={{color:"#a3be8c"}}>replace : <span style={{color:"#88c0d0"}}>{pat.replace}</span></div>
+                            <div style={{color:"#a3be8c"}}>flags   : <span style={{color:"#d08770"}}>{pat.flags}</span></div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Tests */}
+                    <div style={{fontSize:10,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Tests de validation</div>
+                    {regexResult.tests?.map((t, i) => (
+                      <div key={i} style={{padding:"10px 12px",border:`1px solid ${t.passes?'#a7d7b7':'#f5b7b7'}`,borderRadius:7,marginBottom:7,background:testBg(t)}}>
+                        <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
+                          <span style={{fontSize:14}}>{t.passes?"✅":"❌"}</span>
+                          <span style={{fontSize:10,fontWeight:600,color:testColor(t),textTransform:"uppercase",letterSpacing:".05em"}}>Test {i+1} — {t.passes?"Réussi":"Échec"}</span>
+                        </div>
+                        <div style={{fontSize:11.5,marginBottom:3}}>
+                          <span style={{color:C.text3}}>Entrée   : </span>
+                          <span style={{fontStyle:"italic",color:C.red,textDecoration:"line-through"}}>{t.input}</span>
+                        </div>
+                        <div style={{fontSize:11.5,marginBottom:t.actual!==undefined?3:0}}>
+                          <span style={{color:C.text3}}>Attendu  : </span>
+                          <span style={{color:C.green,fontWeight:500}}>{t.expected}</span>
+                        </div>
+                        {t.actual !== undefined && t.actual !== t.expected && (
+                          <div style={{fontSize:11.5,color:C.amber}}>
+                            <span style={{color:C.text3}}>Obtenu   : </span>{t.actual}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Avertissements */}
+                    {regexResult.avertissements && (
+                      <div style={{padding:"9px 12px",background:C.amberLight,border:`1px solid #d4a853`,borderRadius:7,fontSize:11.5,color:C.amber,marginTop:8}}>
+                        ⚠️ {regexResult.avertissements}
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div style={{display:"flex",gap:8,marginTop:12}}>
+                      <button onClick={generateRegex} style={{flex:1,padding:"8px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",fontSize:12,cursor:"pointer",color:C.text2}}>
+                        🔄 Regénérer
+                      </button>
+                      <button onClick={save} style={{flex:2,padding:"8px",border:"none",borderRadius:7,background:C.green,color:"#fff",fontSize:12,fontWeight:500,cursor:"pointer"}}>
+                        ✓ Valider et enregistrer cette règle
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Mode avancé — afficher regex existante */}
+              {!regexResult && selC?.regex && (
+                <div style={{padding:"10px 14px",background:C.cream2,borderRadius:8,border:`1px solid ${C.border}`}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:500,color:C.navy2}}>✅ Règle automatique active</span>
+                    <button onClick={()=>setShowAdvanced(s=>!s)} style={{fontSize:10,color:C.text3,background:"none",border:"none",cursor:"pointer"}}>
+                      {showAdvanced?"Masquer":"Voir les regex"}
+                    </button>
+                  </div>
+                  {showAdvanced && (
+                    <div style={{fontFamily:"monospace",fontSize:10.5,color:C.text2}}>
+                      {(Array.isArray(selC.regex)?selC.regex:[selC.regex]).map((p,i) =>
+                        <div key={i} style={{marginBottom:4}}>
+                          <span style={{color:C.green}}>{p.find}</span>
+                          <span style={{color:C.text3}}> → </span>
+                          <span style={{color:C.navy2}}>{p.replace}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isNew && selC && (
+                <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>
+                  Créé le {selC.created} · Version {selC.version}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1074,6 +1240,7 @@ function ConsignesPage({consignes, setConsignes, onReload, syncStatus}) {
     </div>
   );
 }
+
 
 // ── UTILISATEURS ──
 function UtilisateursPage() {
