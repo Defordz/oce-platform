@@ -4,14 +4,14 @@ import JSZip from "jszip";
 // ── PALETTE ──
 // ── Palette officielle Conseil de la Concurrence du Maroc ──
 const C = {
-  // Rouges institutionnels
-  navy:"#8B1A1A",   navy2:"#A0272A",
-  // Fonds
+  // Verts institutionnels (extraits du motif officiel du site)
+  navy:"#1A3D29",   navy2:"#22432F",
+  // Fonds crème chaud
   cream:"#F9F7F5", cream2:"#F2EEEA", cream3:"#E8E2DC",
-  // Accent or
+  // Accent or (lignes du motif officiel)
   gold:"#C9A84C",
   // Statuts
-  green:"#1a5c2a", greenLight:"#e8f5ec",
+  green:"#1A3D29", greenLight:"#e8f5ec",
   red:"#8B1A1A",   redLight:"#fdf0f0",
   amber:"#7a4a00", amberLight:"#fdf5e0",
   purple:"#4a1a6e",purpleLight:"#f0e8f8",
