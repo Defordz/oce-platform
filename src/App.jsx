@@ -2,16 +2,22 @@ import { useState, useRef } from "react";
 import JSZip from "jszip";
 
 // ── PALETTE ──
+// ── Palette officielle Conseil de la Concurrence du Maroc ──
 const C = {
-  navy:"#0f2650", navy2:"#1a3a6e",
-  cream:"#f8f6f0", cream2:"#f0ede4", cream3:"#e8e3d8",
-  gold:"#b8962e",
+  // Rouges institutionnels
+  navy:"#8B1A1A",   navy2:"#A0272A",
+  // Fonds
+  cream:"#F9F7F5", cream2:"#F2EEEA", cream3:"#E8E2DC",
+  // Accent or
+  gold:"#C9A84C",
+  // Statuts
   green:"#1a5c2a", greenLight:"#e8f5ec",
-  red:"#8b1a1a", redLight:"#fdf0f0",
+  red:"#8B1A1A",   redLight:"#fdf0f0",
   amber:"#7a4a00", amberLight:"#fdf5e0",
-  purple:"#4a1a6e", purpleLight:"#f0e8f8",
-  text:"#1a1a2e", text2:"#4a4a6a", text3:"#8a8aaa",
-  border:"#d8d3c8", border2:"#c8c3b8",
+  purple:"#4a1a6e",purpleLight:"#f0e8f8",
+  // Textes
+  text:"#1A1A2E", text2:"#4a4a6a", text3:"#8a8aaa",
+  border:"#D9D2CA", border2:"#C8BFB5",
 };
 
 const CONSIGNES_2025 = [
@@ -86,18 +92,24 @@ function Badge({t, small}) {
 
 function Sidebar({page, setPage}) {
   const item = (id, icon, label) => (
-    <div onClick={() => setPage(id)} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 14px",cursor:"pointer",borderRadius:6,margin:"1px 7px",background:page===id?"rgba(255,255,255,.13)":"transparent",color:page===id?"#fff":"rgba(255,255,255,.58)",fontSize:12.5,fontWeight:page===id?500:400,transition:"all .15s"}}>
+    <div onClick={() => setPage(id)} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 14px",cursor:"pointer",borderRadius:6,margin:"1px 7px",background:page===id?"rgba(255,255,255,.1)":"transparent",color:page===id?"#fff":"rgba(255,255,255,.55)",borderLeft:page===id?"3px solid "+C.gold:"3px solid transparent",paddingLeft:page===id?"11px":"14px",fontSize:12.5,fontWeight:page===id?500:400,transition:"all .15s"}}>
       <span style={{fontSize:14,opacity:page===id?1:.7}}>{icon}</span>{label}
     </div>
   );
   return (
-    <aside style={{width:210,background:C.navy,display:"flex",flexDirection:"column",flexShrink:0,minHeight:"100vh"}}>
-      <div style={{padding:"22px 18px 14px",borderBottom:"1px solid rgba(255,255,255,.1)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:9}}>
-          <div style={{width:28,height:28,background:"rgba(255,255,255,.15)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>⚖️</div>
-          <div style={{fontFamily:"Georgia,serif",fontSize:12.5,color:"#fff",lineHeight:1.3,fontWeight:600}}>Conseil de la<br/>Concurrence</div>
-        </div>
-        <div style={{fontSize:9,color:"rgba(255,255,255,.32)",letterSpacing:".1em",textTransform:"uppercase"}}>Correction OCE v1.0</div>
+    <aside style={{width:220,background:C.navy,display:"flex",flexDirection:"column",flexShrink:0,minHeight:"100vh",boxShadow:"2px 0 8px rgba(0,0,0,.15)"}}>
+      <div style={{height:4,background:C.gold,flexShrink:0}}/>
+      <div style={{padding:"16px 14px 14px",borderBottom:"1px solid rgba(255,255,255,.15)",background:"#fff"}}>
+        <img
+          src="https://conseil-concurrence.ma/wp-content/uploads/2022/09/Logo-CC-site.png"
+          alt="Conseil de la Concurrence"
+          style={{width:"100%",maxHeight:52,objectFit:"contain",objectPosition:"left"}}
+          onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="block";}}
+        />
+        <div style={{display:"none",fontFamily:"Georgia,serif",fontSize:12,color:C.navy,fontWeight:700,lineHeight:1.3}}>Conseil de la<br/>Concurrence</div>
+      </div>
+      <div style={{padding:"8px 14px 10px",background:C.navy,borderBottom:"1px solid rgba(255,255,255,.1)"}}>
+        <div style={{fontSize:9,color:"rgba(255,255,255,.6)",letterSpacing:".1em",textTransform:"uppercase",fontWeight:500}}>Plateforme de Correction OCE</div>
       </div>
       <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Rapporteur</div>
       {item("correction","📝","Corriger un document")}
@@ -109,7 +121,7 @@ function Sidebar({page, setPage}) {
       {item("utilisateurs","👥","Utilisateurs")}
       <div style={{marginTop:"auto",padding:14,borderTop:"1px solid rgba(255,255,255,.08)"}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
-          <div style={{width:28,height:28,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,color:"#fff"}}>RA</div>
+          <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",letterSpacing:".05em"}}>RA</div>
           <div>
             <div style={{fontSize:11.5,color:"rgba(255,255,255,.7)"}}>Rapporteur</div>
             <div style={{fontSize:9.5,color:"rgba(255,255,255,.33)"}}>Concentrations éco.</div>
@@ -122,10 +134,10 @@ function Sidebar({page, setPage}) {
 
 function PageHeader({title, sub, right}) {
   return (
-    <div style={{padding:"22px 30px 16px",borderBottom:`1px solid ${C.border}`,background:C.cream,flexShrink:0}}>
+    <div style={{padding:"20px 30px 14px",background:"#fff",flexShrink:0,borderBottom:`2px solid ${C.navy}`}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <h1 style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:600,color:C.navy,margin:0}}>{title}</h1>
+          <h1 style={{fontFamily:"Georgia,serif",fontSize:21,fontWeight:700,color:C.navy,margin:0,letterSpacing:"-.01em" }}>{title}</h1>
           {sub && <p style={{fontSize:12.5,color:C.text2,marginTop:3,margin:"3px 0 0"}}>{sub}</p>}
         </div>
         {right}
@@ -135,7 +147,7 @@ function PageHeader({title, sub, right}) {
 }
 
 function Card({children, style}) {
-  return <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"16px 20px",...style}}>{children}</div>;
+  return <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:4,padding:"16px 20px",boxShadow:"0 1px 3px rgba(0,0,0,.06)",...style}}>{children}</div>;
 }
 
 function SLabel({children}) {
@@ -635,8 +647,8 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
         title="Corriger un document"
-        sub="Upload · Analyse Claude · Téléchargement Word avec suivi des modifications"
-        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>Fiche v1.0 active</span>}
+        sub="Upload · Analyse automatique · Téléchargement Word avec suivi des modifications"
+        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>Fiche de consignes active</span>}
       />
 
       {error && <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf0f0",border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12.5,color:C.red}}>{error}</div>}
@@ -918,32 +930,6 @@ function ConsignesPage({consignes, setConsignes, onReload, syncStatus}) {
     (!filterCat  || c.category === filterCat)
   );
 
-  const systemPrompt = `Tu es un expert en droit de la concurrence marocain et en expressions régulières.
-Tu aides un rapporteur du Conseil de la Concurrence à créer des consignes de correction pour les communiqués relatifs aux opérations de concentration économique (loi n°104-12).
-
-Quand l'utilisateur décrit une règle, tu génères une consigne structurée ET une regex JavaScript.
-
-Réponds TOUJOURS dans ce format exact (JSON + explication en français) :
-
----CONSIGNE---
-{
-  "code": "<code proposé ex: F-14>",
-  "doctype": "cp_fr" | "cp_ar" | "bilingue" | "tous",
-  "category": "FORME" | "FOND" | "TERMINOLOGIE" | "BILINGUE",
-  "label": "<intitulé court>",
-  "text": "<description complète de la règle>",
-  "examples": "<exemples incorrect → correct>",
-  "regex": [
-    {"find": "<pattern>", "replace": "<remplacement $1 $2>", "flags": "g", "label": "<description>"}
-  ]
-}
----FIN---
-
-Puis explique en 2-3 phrases simples ce que fait la consigne et teste-la sur 3 exemples réels de communiqués OCE.
-
-Si la regex n'est pas applicable (règle de fond, cohérence bilingue, etc.), mets "regex": null.
-
-Codes existants à éviter : ${consignes.map(c=>c.code).join(", ")}`;
 
   const sendMessage = async (userMsg) => {
     if (!userMsg.trim()) return;
@@ -1029,7 +1015,7 @@ Codes existants à éviter : ${consignes.map(c=>c.code).join(", ")}`;
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
         title="Fiches de consignes"
-        sub="Crée et modifie les consignes en conversation avec Claude"
+        sub="Crée et modifie les consignes par conversation"
         right={
           <div style={{display:"flex",gap:8}}>
             <button onClick={onReload} style={{padding:"6px 12px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",fontSize:12,cursor:"pointer",color:C.text2}}>
@@ -1037,7 +1023,7 @@ Codes existants à éviter : ${consignes.map(c=>c.code).join(", ")}`;
             </button>
             {view==="list"
               ? <button onClick={()=>{setView("chat");resetChat();}} style={{padding:"7px 16px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-                  💬 Nouvelle consigne
+                  ✏️ Nouvelle consigne
                 </button>
               : <button onClick={()=>setView("list")} style={{padding:"7px 16px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,cursor:"pointer"}}>
                   ← Liste des consignes
@@ -1089,9 +1075,9 @@ Codes existants à éviter : ${consignes.map(c=>c.code).join(", ")}`;
             <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"20px 24px"}}>
               <div style={{fontSize:14,fontWeight:500,color:C.navy,marginBottom:12}}>Comment créer une consigne</div>
               {[
-                ["💬","Clique sur \"Nouvelle consigne\"","Lance le chat avec Claude"],
+                ["💬","Clique sur \"Nouvelle consigne\"","Lance le chat de consignes"],
                 ["📝","Décris la règle en français","Ex: \"le nom société doit être précédé de la société\""],
-                ["⚡","Claude propose la consigne","Avec exemples, tests et règle automatique"],
+                ["⚡","La règle est générée automatiquement","Avec exemples, tests et règle automatique"],
                 ["🔄","Demande des modifications","Itère jusqu'au résultat souhaité"],
                 ["✅","Valide l'intégration","La consigne est ajoutée à la liste et sauvegardée"],
               ].map(([icon,title,sub],i)=>(
@@ -1106,7 +1092,7 @@ Codes existants à éviter : ${consignes.map(c=>c.code).join(", ")}`;
             </div>
             <div style={{background:C.navy,borderRadius:10,padding:"16px 20px",color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.7}}>
               <div style={{fontWeight:600,color:"#fff",marginBottom:6}}>💡 Conseil</div>
-              Les consignes avec le badge <span style={{background:"#e8f5ec",color:C.green,padding:"1px 6px",borderRadius:10,fontSize:10,fontWeight:600}}>AUTO</span> sont appliquées automatiquement sur le document Word sans passer par Claude — ce sont les plus fiables.
+              Les consignes avec le badge <span style={{background:"#e8f5ec",color:C.green,padding:"1px 6px",borderRadius:10,fontSize:10,fontWeight:600}}>AUTO</span> sont appliquées automatiquement sur le document Word — ce sont les plus fiables.
             </div>
           </div>
         </div>
