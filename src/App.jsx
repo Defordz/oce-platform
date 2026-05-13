@@ -901,342 +901,303 @@ const CODE_PREFIX = {FORME:"F",FOND:"D",TERMINOLOGIE:"T",BILINGUE:"B"};
 
 // ── CONSIGNES ──
 function ConsignesPage({consignes, setConsignes, onReload, syncStatus}) {
-  const [selected, setSelected] = useState(null);
+  const [view, setView] = useState("list"); // "list" | "chat"
+  const [messages, setMessages] = useState([
+    { role: "assistant", content: "Bonjour ! Décris-moi la consigne que tu veux créer ou modifier. Par exemple : *\"Le nom de société doit toujours être précédé de 'la société' dans le titre\"*" }
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [pendingConsigne, setPendingConsigne] = useState(null);
+  const [editingId, setEditingId] = useState(null);
   const [filterType, setFilterType] = useState("");
   const [filterCat, setFilterCat] = useState("");
-
-  // Formulaire simplifié
-  const [form, setForm] = useState({code:"", doctype:"cp_fr", category:"FORME", label:"", description:"", examples:""});
-  const [isNew, setIsNew] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  // Génération regex
-  const [generating, setGenerating] = useState(false);
-  const [regexResult, setRegexResult] = useState(null);
-  const [regexError, setRegexError] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const chatEndRef = { current: null };
 
   const filtered = consignes.filter(c =>
     (!filterType || c.doctype === filterType) &&
     (!filterCat  || c.category === filterCat)
   );
-  const selC = selected ? consignes.find(c => c.id === selected) : null;
 
-  const selectC = c => {
-    setSelected(c.id);
-    setForm({ code:c.code, doctype:c.doctype, category:c.category,
-               label:c.label, description:c.text, examples:c.examples||"" });
-    setRegexResult(null); setRegexError(""); setIsNew(false); setSaved(false);
-  };
+  const systemPrompt = `Tu es un expert en droit de la concurrence marocain et en expressions régulières.
+Tu aides un rapporteur du Conseil de la Concurrence à créer des consignes de correction pour les communiqués relatifs aux opérations de concentration économique (loi n°104-12).
 
-  const newC = () => {
-    setSelected(null); setIsNew(true); setSaved(false);
-    setForm({ code:"", doctype:"cp_fr", category:"FORME", label:"", description:"", examples:"" });
-    setRegexResult(null); setRegexError("");
-  };
+Quand l'utilisateur décrit une règle, tu génères une consigne structurée ET une regex JavaScript.
 
-  // ── Générer la regex via Claude ──
-  const generateRegex = async () => {
-    if (!form.description) { setRegexError("Décris la règle d'abord."); return; }
-    setGenerating(true); setRegexResult(null); setRegexError("");
+Réponds TOUJOURS dans ce format exact (JSON + explication en français) :
+
+---CONSIGNE---
+{
+  "code": "<code proposé ex: F-14>",
+  "doctype": "cp_fr" | "cp_ar" | "bilingue" | "tous",
+  "category": "FORME" | "FOND" | "TERMINOLOGIE" | "BILINGUE",
+  "label": "<intitulé court>",
+  "text": "<description complète de la règle>",
+  "examples": "<exemples incorrect → correct>",
+  "regex": [
+    {"find": "<pattern>", "replace": "<remplacement $1 $2>", "flags": "g", "label": "<description>"}
+  ]
+}
+---FIN---
+
+Puis explique en 2-3 phrases simples ce que fait la consigne et teste-la sur 3 exemples réels de communiqués OCE.
+
+Si la regex n'est pas applicable (règle de fond, cohérence bilingue, etc.), mets "regex": null.
+
+Codes existants à éviter : ${consignes.map(c=>c.code).join(", ")}`;
+
+  const sendMessage = async (userMsg) => {
+    if (!userMsg.trim()) return;
+    const newMessages = [...messages, { role: "user", content: userMsg }];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+
     try {
-      const res = await fetch("/api/generate-regex", {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          description: form.description,
-          examples: form.examples,
-          doctype: form.doctype,
-          category: form.category,
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2000,
+          system: systemPrompt,
+          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setRegexResult(data);
-    } catch (err) {
-      setRegexError("Erreur lors de la génération : " + err.message);
-    }
-    setGenerating(false);
-  };
+      const data = await resp.json();
+      const text = data.content?.map(c => c.text||"").join("") || "Erreur de réponse.";
 
-  // ── Sauvegarder ──
-  const save = () => {
-    if (!form.code || !form.label || !form.description) {
-      setRegexError("Code, intitulé et description sont obligatoires."); return;
-    }
-    const existing = consignes.find(c => c.id === selected);
-    const newVersion = existing ? (parseFloat(existing.version||"1.0")+0.1).toFixed(1) : "1.0";
-    const consigne = {
-      id: isNew ? form.code : selected,
-      code: form.code,
-      doctype: form.doctype,
-      category: form.category,
-      label: form.label,
-      text: form.description,
-      examples: form.examples,
-      notes: "",
-      regex: regexResult?.regex || (existing?.regex ?? null),
-      created: existing?.created || new Date().toLocaleDateString("fr-FR"),
-      version: newVersion,
-    };
-    if (isNew) {
-      setConsignes(cs => [...cs, consigne]);
-      setSelected(consigne.id); setIsNew(false);
-    } else {
-      setConsignes(cs => cs.map(c => c.id === selected ? consigne : c));
-    }
-    setSaved(true); setTimeout(() => setSaved(false), 3000);
-    setRegexError("");
-  };
-
-  const del = () => {
-    if (!selected || !confirm("Supprimer cette consigne ?")) return;
-    setConsignes(cs => cs.filter(c => c.id !== selected));
-    setSelected(null); setIsNew(false); setRegexResult(null);
-  };
-
-  const FInput = ({label, field, ph, area, mono}) => (
-    <div>
-      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
-      {area
-        ? <textarea value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} placeholder={ph} rows={area}
-            style={{width:"100%",padding:"8px 11px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:mono?"monospace":"inherit",fontSize:mono?11:12,color:C.text,resize:"vertical",lineHeight:1.5}}/>
-        : <input value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))} placeholder={ph}
-            style={{width:"100%",padding:"8px 11px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}/>
+      // Extraire la consigne du JSON si présente
+      const jsonMatch = text.match(/---CONSIGNE---\s*([\s\S]*?)\s*---FIN---/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          setPendingConsigne({ ...parsed, id: parsed.code, version: "1.0", created: new Date().toLocaleDateString("fr-FR") });
+        } catch(e) { setPendingConsigne(null); }
       }
-    </div>
-  );
 
-  const FSel = ({label, field, opts}) => (
-    <div>
-      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
-      <select value={form[field]||""} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))}
-        style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
-        {opts.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-      </select>
-    </div>
-  );
+      setMessages(m => [...m, { role: "assistant", content: text }]);
+    } catch(e) {
+      setMessages(m => [...m, { role: "assistant", content: "Erreur de connexion : " + e.message }]);
+    }
+    setLoading(false);
+  };
 
-  const testColor = t => t.passes ? C.green : C.red;
-  const testBg    = t => t.passes ? C.greenLight : C.redLight;
+  const integrateConsigne = () => {
+    if (!pendingConsigne) return;
+    if (editingId) {
+      setConsignes(cs => cs.map(c => c.id === editingId ? { ...pendingConsigne, id: editingId } : c));
+    } else {
+      const exists = consignes.find(c => c.id === pendingConsigne.id);
+      if (exists) {
+        setConsignes(cs => cs.map(c => c.id === pendingConsigne.id ? pendingConsigne : c));
+      } else {
+        setConsignes(cs => [...cs, pendingConsigne]);
+      }
+    }
+    setPendingConsigne(null);
+    setMessages([{ role: "assistant", content: "✅ Consigne intégrée ! Décris-moi une autre règle ou ferme le chat." }]);
+    setEditingId(null);
+  };
+
+  const startEdit = (c) => {
+    setEditingId(c.id);
+    setView("chat");
+    setMessages([
+      { role: "assistant", content: `Je vais modifier la consigne **${c.code} — ${c.label}**.\n\nActuellement :\n> ${c.text}\n\nQue veux-tu changer ?` }
+    ]);
+    setPendingConsigne(null);
+  };
+
+  const deleteConsigne = (id) => {
+    if (!confirm("Supprimer cette consigne ?")) return;
+    setConsignes(cs => cs.filter(c => c.id !== id));
+  };
+
+  const resetChat = () => {
+    setMessages([{ role: "assistant", content: "Décris-moi la consigne que tu veux créer." }]);
+    setPendingConsigne(null); setEditingId(null);
+  };
+
+  // Render message content (simple markdown-like)
+  const renderMsg = (text) => {
+    const withoutJson = text.replace(/---CONSIGNE---[\s\S]*?---FIN---/g, "");
+    return withoutJson.split("\n").map((line, i) => {
+      const bold = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
+      return <div key={i} style={{marginBottom: line ? 3 : 8}} dangerouslySetInnerHTML={{__html: bold || "&nbsp;"}} />;
+    });
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
         title="Fiches de consignes"
-        sub={`${consignes.length} consignes · Décris en français, Claude génère la règle`}
+        sub="Crée et modifie les consignes en conversation avec Claude"
         right={
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",gap:8}}>
             <button onClick={onReload} style={{padding:"6px 12px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",fontSize:12,cursor:"pointer",color:C.text2}}>
               🔄 {syncStatus==="loading"?"…":"Sync"}
             </button>
-            <button onClick={newC} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              + Nouvelle consigne
-            </button>
+            {view==="list"
+              ? <button onClick={()=>{setView("chat");resetChat();}} style={{padding:"7px 16px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
+                  💬 Nouvelle consigne
+                </button>
+              : <button onClick={()=>setView("list")} style={{padding:"7px 16px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,cursor:"pointer"}}>
+                  ← Liste des consignes
+                </button>
+            }
           </div>
         }
       />
-      <div style={{flex:1,padding:"16px 28px",overflow:"hidden",display:"grid",gridTemplateColumns:"240px 1fr",gap:14}}>
 
-        {/* ── LISTE ── */}
-        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          <div style={{padding:"9px 11px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:5}}>
-            <select value={filterType} onChange={e=>setFilterType(e.target.value)}
-              style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
-              <option value="">Tous types</option>
-              {Object.entries(TYPE_LABELS).filter(([k])=>k!=="tous").map(([v,l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <select value={filterCat} onChange={e=>setFilterCat(e.target.value)}
-              style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
-              <option value="">Toutes</option>
-              {["FORME","FOND","TERMINOLOGIE","BILINGUE"].map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div style={{overflowY:"auto",flex:1}}>
-            {filtered.map(c => (
-              <div key={c.id} onClick={()=>selectC(c)} style={{padding:"8px 11px",borderBottom:`1px solid ${C.cream2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:7,background:selected===c.id?"#edf2ff":"#fff",borderLeft:selected===c.id?`3px solid ${C.navy2}`:"3px solid transparent",transition:"all .1s"}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                    <span style={{fontSize:9.5,fontWeight:600,color:C.text3,fontFamily:"monospace"}}>{c.code}</span>
-                    {c.regex && <span style={{fontSize:8,background:"#e8f5ec",color:C.green,padding:"1px 5px",borderRadius:10,fontWeight:600}}>AUTO</span>}
+      {view === "list" && (
+        <div style={{flex:1,overflow:"hidden",padding:"16px 28px",display:"grid",gridTemplateColumns:"260px 1fr",gap:14}}>
+          {/* Filtres + liste */}
+          <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+            <div style={{padding:"9px 11px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:5}}>
+              <select value={filterType} onChange={e=>setFilterType(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+                <option value="">Tous types</option>
+                {Object.entries(TYPE_LABELS).filter(([k])=>k!=="tous").map(([v,l])=><option key={v} value={v}>{l}</option>)}
+              </select>
+              <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+                <option value="">Toutes</option>
+                {["FORME","FOND","TERMINOLOGIE","BILINGUE"].map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div style={{overflowY:"auto",flex:1}}>
+              {filtered.map(c=>(
+                <div key={c.id} style={{padding:"9px 12px",borderBottom:`1px solid ${C.cream2}`,display:"flex",alignItems:"flex-start",gap:8}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
+                      <span style={{fontSize:9.5,fontWeight:600,color:C.text3,fontFamily:"monospace"}}>{c.code}</span>
+                      {c.regex && <span style={{fontSize:8,background:"#e8f5ec",color:C.green,padding:"1px 5px",borderRadius:10,fontWeight:600}}>AUTO</span>}
+                      <span style={{background:CAT_BG[c.category]||"#f0f0f0",color:CAT_FG[c.category]||"#555",padding:"1px 5px",borderRadius:10,fontSize:8,fontWeight:600}}>{c.category}</span>
+                    </div>
+                    <div style={{fontSize:11.5,fontWeight:500,color:C.text,lineHeight:1.3}}>{c.label}</div>
+                    <div style={{fontSize:10.5,color:C.text3,marginTop:2,lineHeight:1.4}}>{c.text?.substring(0,80)}…</div>
                   </div>
-                  <div style={{fontSize:11,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</div>
-                  <div style={{fontSize:9.5,color:C.text3,marginTop:1}}>{TYPE_LABELS[c.doctype]||c.doctype}</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+                    <button onClick={()=>startEdit(c)} style={{padding:"3px 8px",border:`1px solid ${C.border2}`,borderRadius:5,background:"#fff",fontSize:10,cursor:"pointer",color:C.text2}}>Modifier</button>
+                    <button onClick={()=>deleteConsigne(c.id)} style={{padding:"3px 8px",border:"1px solid #f5b7b7",borderRadius:5,background:C.redLight,fontSize:10,cursor:"pointer",color:C.red}}>Supprimer</button>
+                  </div>
                 </div>
-                <span style={{background:CAT_BG[c.category]||"#f0f0f0",color:CAT_FG[c.category]||"#555",padding:"1px 5px",borderRadius:20,fontSize:8,fontWeight:600,flexShrink:0}}>{c.category}</span>
+              ))}
+              {filtered.length===0 && <div style={{padding:20,fontSize:12,color:C.text3,textAlign:"center"}}>Aucune consigne</div>}
+            </div>
+            <div style={{padding:"6px 11px",borderTop:`1px solid ${C.cream2}`,fontSize:9.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
+          </div>
+
+          {/* Instructions à droite */}
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"20px 24px"}}>
+              <div style={{fontSize:14,fontWeight:500,color:C.navy,marginBottom:12}}>Comment créer une consigne</div>
+              {[
+                ["💬","Clique sur \"Nouvelle consigne\"","Lance le chat avec Claude"],
+                ["📝","Décris la règle en français","Ex: \"le nom société doit être précédé de la société\""],
+                ["⚡","Claude propose la consigne","Avec exemples, tests et règle automatique"],
+                ["🔄","Demande des modifications","Itère jusqu'au résultat souhaité"],
+                ["✅","Valide l'intégration","La consigne est ajoutée à la liste et sauvegardée"],
+              ].map(([icon,title,sub],i)=>(
+                <div key={i} style={{display:"flex",gap:12,marginBottom:12,alignItems:"flex-start"}}>
+                  <div style={{width:32,height:32,borderRadius:8,background:C.cream2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{icon}</div>
+                  <div>
+                    <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{title}</div>
+                    <div style={{fontSize:11.5,color:C.text3,marginTop:1}}>{sub}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:C.navy,borderRadius:10,padding:"16px 20px",color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.7}}>
+              <div style={{fontWeight:600,color:"#fff",marginBottom:6}}>💡 Conseil</div>
+              Les consignes avec le badge <span style={{background:"#e8f5ec",color:C.green,padding:"1px 6px",borderRadius:10,fontSize:10,fontWeight:600}}>AUTO</span> sont appliquées automatiquement sur le document Word sans passer par Claude — ce sont les plus fiables.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view === "chat" && (
+        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",padding:"16px 28px",gap:12}}>
+          {editingId && (
+            <div style={{padding:"8px 14px",background:C.amberLight,border:`1px solid #d4a853`,borderRadius:8,fontSize:12,color:C.amber,flexShrink:0}}>
+              ✏️ Mode modification — consigne <strong>{editingId}</strong>
+            </div>
+          )}
+
+          {/* Messages */}
+          <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingRight:4}}>
+            {messages.map((msg, i) => (
+              <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+                <div style={{
+                  maxWidth:"82%",padding:"11px 14px",borderRadius:10,fontSize:13,lineHeight:1.6,
+                  background:msg.role==="user"?C.navy:"#fff",
+                  color:msg.role==="user"?"#fff":C.text,
+                  border:msg.role==="user"?"none":`1px solid ${C.border}`,
+                  borderBottomRightRadius:msg.role==="user"?2:10,
+                  borderBottomLeftRadius:msg.role==="assistant"?2:10,
+                }}>
+                  {msg.role==="assistant" ? renderMsg(msg.content) : msg.content}
+                </div>
               </div>
             ))}
-            {filtered.length === 0 && <div style={{padding:18,fontSize:12,color:C.text3,textAlign:"center"}}>Aucune consigne</div>}
+
+            {loading && (
+              <div style={{display:"flex",justifyContent:"flex-start"}}>
+                <div style={{padding:"11px 16px",borderRadius:10,background:"#fff",border:`1px solid ${C.border}`,display:"flex",gap:5,alignItems:"center"}}>
+                  {[0,1,2].map(i=>(
+                    <div key={i} style={{width:7,height:7,borderRadius:"50%",background:C.navy2,animation:`bounce .9s ${i*0.15}s infinite`}}/>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div ref={el=>{if(el)el.scrollIntoView({behavior:"smooth"})}}/>
           </div>
-          <div style={{padding:"6px 11px",borderTop:`1px solid ${C.cream2}`,fontSize:9.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
-        </div>
 
-        {/* ── ÉDITEUR SIMPLIFIÉ ── */}
-        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:14}}>
-          {!selected && !isNew ? (
-            <div style={{textAlign:"center",padding:"44px 20px",color:C.text3}}>
-              <div style={{fontSize:32,marginBottom:10,opacity:.2}}>✏️</div>
-              <p style={{fontSize:13,lineHeight:1.7}}>Sélectionnez une consigne<br/>ou créez-en une nouvelle<br/><span style={{fontSize:11,color:C.text3}}>Décris la règle en français — Claude génère la regex</span></p>
+          {/* Consigne en attente */}
+          {pendingConsigne && (
+            <div style={{background:"#fff",border:`2px solid ${C.green}`,borderRadius:10,padding:"14px 18px",flexShrink:0}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.green}}>✅ Consigne prête à intégrer</div>
+                <div style={{display:"flex",gap:7}}>
+                  <button onClick={()=>sendMessage("Modifie cette consigne : ")} style={{padding:"6px 12px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:11.5,cursor:"pointer",color:C.text2}}>
+                    Demander une modification
+                  </button>
+                  <button onClick={integrateConsigne} style={{padding:"6px 14px",border:"none",borderRadius:6,background:C.green,color:"#fff",fontSize:11.5,fontWeight:600,cursor:"pointer"}}>
+                    ✓ Intégrer la consigne
+                  </button>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 12px",fontSize:12}}>
+                <span style={{color:C.text3,fontWeight:500}}>Code</span><span style={{fontFamily:"monospace",color:C.navy2}}>{pendingConsigne.code}</span>
+                <span style={{color:C.text3,fontWeight:500}}>Intitulé</span><span>{pendingConsigne.label}</span>
+                <span style={{color:C.text3,fontWeight:500}}>Type</span><span>{TYPE_LABELS[pendingConsigne.doctype]||pendingConsigne.doctype} · {pendingConsigne.category}</span>
+                <span style={{color:C.text3,fontWeight:500}}>Règle</span><span style={{fontStyle:"italic"}}>{pendingConsigne.text?.substring(0,120)}…</span>
+                {pendingConsigne.regex && <><span style={{color:C.text3,fontWeight:500}}>Auto</span><span style={{background:"#e8f5ec",color:C.green,padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:600,display:"inline-block"}}>Correction automatique active</span></>}
+              </div>
             </div>
-          ) : (
-            <>
-              {/* Toolbar */}
-              <div style={{display:"flex",alignItems:"center",gap:8,paddingBottom:12,borderBottom:`1px solid ${C.cream2}`}}>
-                <div style={{flex:1,fontSize:13,fontWeight:500,color:C.navy2}}>{isNew?"Nouvelle consigne":`Consigne ${selC?.code}`}</div>
-                {!isNew && <span style={{fontSize:9.5,padding:"2px 7px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>v{selC?.version}</span>}
-                {saved && <span style={{fontSize:10.5,color:C.green,fontWeight:500}}>✓ Enregistré</span>}
-                <button onClick={save} style={{padding:"5px 14px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Enregistrer</button>
-                {!isNew && <button onClick={del} style={{padding:"5px 10px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red}}>Supprimer</button>}
-              </div>
-
-              {/* Champs de base */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
-                <FInput label="Code" field="code" ph="ex : F-13"/>
-                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["tous","Tous types"]]}/>
-                <FSel label="Catégorie" field="category" opts={[["FORME","Forme"],["FOND","Fond"],["TERMINOLOGIE","Terminologie"],["BILINGUE","Bilingue"]]}/>
-              </div>
-              <FInput label="Intitulé court" field="label" ph="ex : Mention 'la société' avant dénominations"/>
-
-              {/* Zone principale — description en français */}
-              <div>
-                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>
-                  Décris la règle en français
-                </div>
-                <textarea value={form.description||""} onChange={e=>setForm(f=>({...f,description:e.target.value}))}
-                  placeholder="Ex : Dans le titre et dans le résumé non confidentiel, tout nom de société entre guillemets doit être précédé du mot 'la société'. Ne pas appliquer dans les rubriques L'acquéreur et La cible."
-                  rows={4} style={{width:"100%",padding:"10px 12px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:13,color:C.text,resize:"vertical",lineHeight:1.6}}/>
-              </div>
-
-              <div>
-                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>
-                  Exemples (optionnel — améliore la précision)
-                </div>
-                <textarea value={form.examples||""} onChange={e=>setForm(f=>({...f,examples:e.target.value}))}
-                  placeholder={"Incorrect : de «Adeesy SARLAU» aux côtés\nCorrect   : de la société «Adeesy SARLAU» aux côtés"}
-                  rows={3} style={{width:"100%",padding:"9px 12px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text,resize:"vertical",lineHeight:1.6}}/>
-              </div>
-
-              {/* Bouton génération */}
-              <button onClick={generateRegex} disabled={generating || !form.description}
-                style={{padding:"10px",border:"none",borderRadius:8,background:generating||!form.description?"#9ca3af":C.navy2,color:"#fff",fontSize:13,fontWeight:500,cursor:generating||!form.description?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all .15s"}}>
-                {generating
-                  ? <><div style={{width:16,height:16,border:"2px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin .7s linear infinite"}}/> Génération en cours…</>
-                  : <><span>⚡</span> Générer la règle automatique avec Claude</>
-                }
-              </button>
-
-              {regexError && (
-                <div style={{padding:"10px 12px",background:C.redLight,border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12,color:C.red}}>{regexError}</div>
-              )}
-
-              {/* ── RÉSULTAT GÉNÉRATION ── */}
-              {regexResult && (
-                <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
-                  {/* Header */}
-                  <div style={{padding:"10px 14px",background:C.navy,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{fontSize:12,fontWeight:500,color:"#fff"}}>⚡ Règle automatique générée par Claude</span>
-                    <button onClick={()=>setShowAdvanced(s=>!s)} style={{fontSize:10,color:"rgba(255,255,255,.6)",background:"none",border:"none",cursor:"pointer"}}>
-                      {showAdvanced?"Masquer les regex":"Voir les regex"}
-                    </button>
-                  </div>
-
-                  <div style={{padding:"14px"}}>
-                    {/* Explication */}
-                    <div style={{fontSize:12.5,color:C.text2,lineHeight:1.6,marginBottom:14,padding:"10px 12px",background:C.cream2,borderRadius:7}}>
-                      💡 {regexResult.explication}
-                    </div>
-
-                    {/* Regex (mode avancé) */}
-                    {showAdvanced && regexResult.regex && (
-                      <div style={{marginBottom:14}}>
-                        <div style={{fontSize:10,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Patterns générés</div>
-                        {(Array.isArray(regexResult.regex)?regexResult.regex:[regexResult.regex]).map((pat,i) => (
-                          <div key={i} style={{background:"#1e1e2e",borderRadius:6,padding:"10px 12px",marginBottom:6,fontFamily:"monospace",fontSize:11}}>
-                            <div style={{color:"#88c0d0",marginBottom:3}}>// {pat.label||"Pattern "+(i+1)}</div>
-                            <div style={{color:"#a3be8c"}}>find    : <span style={{color:"#ebcb8b"}}>{pat.find}</span></div>
-                            <div style={{color:"#a3be8c"}}>replace : <span style={{color:"#88c0d0"}}>{pat.replace}</span></div>
-                            <div style={{color:"#a3be8c"}}>flags   : <span style={{color:"#d08770"}}>{pat.flags}</span></div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Tests */}
-                    <div style={{fontSize:10,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Tests de validation</div>
-                    {regexResult.tests?.map((t, i) => (
-                      <div key={i} style={{padding:"10px 12px",border:`1px solid ${t.passes?'#a7d7b7':'#f5b7b7'}`,borderRadius:7,marginBottom:7,background:testBg(t)}}>
-                        <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:5}}>
-                          <span style={{fontSize:14}}>{t.passes?"✅":"❌"}</span>
-                          <span style={{fontSize:10,fontWeight:600,color:testColor(t),textTransform:"uppercase",letterSpacing:".05em"}}>Test {i+1} — {t.passes?"Réussi":"Échec"}</span>
-                        </div>
-                        <div style={{fontSize:11.5,marginBottom:3}}>
-                          <span style={{color:C.text3}}>Entrée   : </span>
-                          <span style={{fontStyle:"italic",color:C.red,textDecoration:"line-through"}}>{t.input}</span>
-                        </div>
-                        <div style={{fontSize:11.5,marginBottom:t.actual!==undefined?3:0}}>
-                          <span style={{color:C.text3}}>Attendu  : </span>
-                          <span style={{color:C.green,fontWeight:500}}>{t.expected}</span>
-                        </div>
-                        {t.actual !== undefined && t.actual !== t.expected && (
-                          <div style={{fontSize:11.5,color:C.amber}}>
-                            <span style={{color:C.text3}}>Obtenu   : </span>{t.actual}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Avertissements */}
-                    {regexResult.avertissements && (
-                      <div style={{padding:"9px 12px",background:C.amberLight,border:`1px solid #d4a853`,borderRadius:7,fontSize:11.5,color:C.amber,marginTop:8}}>
-                        ⚠️ {regexResult.avertissements}
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div style={{display:"flex",gap:8,marginTop:12}}>
-                      <button onClick={generateRegex} style={{flex:1,padding:"8px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",fontSize:12,cursor:"pointer",color:C.text2}}>
-                        🔄 Regénérer
-                      </button>
-                      <button onClick={save} style={{flex:2,padding:"8px",border:"none",borderRadius:7,background:C.green,color:"#fff",fontSize:12,fontWeight:500,cursor:"pointer"}}>
-                        ✓ Valider et enregistrer cette règle
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Mode avancé — afficher regex existante */}
-              {!regexResult && selC?.regex && (
-                <div style={{padding:"10px 14px",background:C.cream2,borderRadius:8,border:`1px solid ${C.border}`}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                    <span style={{fontSize:11,fontWeight:500,color:C.navy2}}>✅ Règle automatique active</span>
-                    <button onClick={()=>setShowAdvanced(s=>!s)} style={{fontSize:10,color:C.text3,background:"none",border:"none",cursor:"pointer"}}>
-                      {showAdvanced?"Masquer":"Voir les regex"}
-                    </button>
-                  </div>
-                  {showAdvanced && (
-                    <div style={{fontFamily:"monospace",fontSize:10.5,color:C.text2}}>
-                      {(Array.isArray(selC.regex)?selC.regex:[selC.regex]).map((p,i) =>
-                        <div key={i} style={{marginBottom:4}}>
-                          <span style={{color:C.green}}>{p.find}</span>
-                          <span style={{color:C.text3}}> → </span>
-                          <span style={{color:C.navy2}}>{p.replace}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {!isNew && selC && (
-                <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>
-                  Créé le {selC.created} · Version {selC.version}
-                </div>
-              )}
-            </>
           )}
+
+          {/* Input */}
+          <div style={{display:"flex",gap:8,flexShrink:0}}>
+            <input
+              value={input} onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!loading){e.preventDefault();sendMessage(input);}}}
+              placeholder="Décris la règle ou demande une modification… (Entrée pour envoyer)"
+              disabled={loading}
+              style={{flex:1,padding:"11px 14px",border:`1px solid ${C.border2}`,borderRadius:8,fontFamily:"inherit",fontSize:13,color:C.text,outline:"none"}}
+            />
+            <button onClick={()=>sendMessage(input)} disabled={loading||!input.trim()}
+              style={{padding:"11px 20px",border:"none",borderRadius:8,background:loading||!input.trim()?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:loading||!input.trim()?"not-allowed":"pointer",flexShrink:0}}>
+              Envoyer
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      <style>{`
+        @keyframes bounce {
+          0%,80%,100%{transform:translateY(0)}
+          40%{transform:translateY(-6px)}
+        }
+      `}</style>
     </div>
   );
 }
