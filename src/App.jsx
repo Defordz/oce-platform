@@ -304,107 +304,123 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
   const acceptAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "accepted"); setStatuses(m); };
   const rejectAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "rejected"); setStatuses(m); };
 
-  const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const escXml = s => s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
-  // Apply Track Changes across runs in a paragraph
-  // Normalise les caractères spéciaux pour la comparaison
-  const normalizeText = s => s
-    .replace(/\u00a0/g, " ")         // espace insécable → espace normal
-    .replace(/\u2019/g, "'")         // apostrophe typographique → simple
-    .replace(/\u2018/g, "'")
-    .replace(/\u201c/g, "\"")       // guillemets typographiques
-    .replace(/\u201d/g, "\"")
-    .replace(/\u00ab/g, "<<")        // guillemets français
-    .replace(/\u00bb/g, ">>")
-    .replace(/\s+/g, " ")            // espaces multiples → un seul
+  // ── NORMALISATION : rend les caractères spéciaux comparables ──
+  // Transforme espaces insécables, apostrophes typographiques, guillemets
+  // en leurs équivalents simples pour permettre la recherche de texte
+  const norm = s => s
+    .replace(/ /g, " ")    // espace insécable → espace
+    .replace(/ /g, " ")    // espace fine insécable → espace
+    .replace(/’/g, "'")    // apostrophe typographique ' → '
+    .replace(/‘/g, "'")    // apostrophe ouvrante ' → '
+    .replace(/“/g, '"')    // guillemet anglais ouvrant
+    .replace(/”/g, '"')    // guillemet anglais fermant
+    .replace(/«/g, "«") // garder « tel quel
+    .replace(/»/g, "»") // garder » tel quel
+    .replace(/[ 	]+/g, " ")    // espaces multiples → un seul
     .trim();
 
-  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => {
-    const RUN_RE = /(<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>)/g;
-    let result = paraXml;
+  // ── APPLY TRACK CHANGES : approche document-level ──
+  // Au lieu de travailler paragraphe par paragraphe (qui rate les textes
+  // fragmentés entre plusieurs <w:r>), on travaille sur le XML complet
+  // du document en une seule passe.
+  const applyAllTrackChanges = (docXml, corrections, date) => {
+    let result = docXml;
+    let changeId = 200;
 
     for (const { original, suggested } of corrections) {
-      const runMatches = [...result.matchAll(RUN_RE)];
-      if (!runMatches.length) continue;
+      if (!original || !suggested || original === suggested) continue;
 
-      const texts = runMatches.map(m => {
-        const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-        return t ? t[1] : "";
-      });
-      const combined = texts.join("");
-      
-      // Essai 1 : recherche exacte
-      let pos = combined.indexOf(original);
-      
-      // Essai 2 : recherche avec normalisation (gère apostrophes, espaces insécables, etc.)
-      let searchOriginal = original;
-      if (pos === -1) {
-        const normalizedCombined = normalizeText(combined);
-        const normalizedOriginal = normalizeText(original);
-        const normalizedPos = normalizedCombined.indexOf(normalizedOriginal);
-        if (normalizedPos !== -1) {
-          // Reconstruire la position dans le texte original non normalisé
-          // en cherchant une correspondance approximative
-          const ratio = combined.length / normalizedCombined.length;
-          const approxPos = Math.floor(normalizedPos * ratio);
-          // Chercher dans une fenêtre autour de la position approximative
-          const window = 20;
-          const start = Math.max(0, approxPos - window);
-          const end = Math.min(combined.length, approxPos + normalizedOriginal.length + window);
-          const segment = combined.slice(start, end);
-          // Chercher la meilleure correspondance dans ce segment
-          const words = normalizedOriginal.split(" ").filter(w => w.length > 3);
-          if (words.length > 0 && segment.includes(words[0])) {
-            const wordPos = combined.indexOf(words[0], start);
-            if (wordPos !== -1) {
-              pos = wordPos;
-              searchOriginal = combined.slice(wordPos, wordPos + original.length);
-            }
-          }
-        }
+      // Extraire tous les runs du document sous forme de [{xml, text, start, end}]
+      const RUN_RE = /<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>/g;
+      const runs = [];
+      let m;
+      RUN_RE.lastIndex = 0;
+      while ((m = RUN_RE.exec(result)) !== null) {
+        const tMatch = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+        runs.push({
+          xml: m[0],
+          text: tMatch ? tMatch[1] : "",
+          start: m.index,
+          end: m.index + m[0].length,
+        });
       }
-      
-      if (pos === -1) {
-        console.warn(`[TrackChanges] Texte non trouvé dans le document:`, JSON.stringify(original));
-        console.warn(`[TrackChanges] Texte combiné du paragraphe:`, JSON.stringify(combined.substring(0, 200)));
+
+      // Reconstruire le texte complet normalisé pour la recherche
+      const rawFull = runs.map(r => r.text).join("");
+      const normFull = norm(rawFull);
+      const normOrig = norm(original);
+
+      const normPos = normFull.indexOf(normOrig);
+      if (normPos === -1) {
+        console.warn("[TC] Non trouvé:", JSON.stringify(original.substring(0, 60)));
         continue;
       }
-      const originalToUse = searchOriginal;
-      console.log(`[TrackChanges] ✅ Correction appliquée: "${originalToUse}" → "${suggested}"`);
 
-      const end = pos + originalToUse.length;
-      let cum = 0, startRun = null, endRun = null;
-      for (let i = 0; i < texts.length; i++) {
-        const runEnd = cum + texts[i].length;
-        if (startRun === null && runEnd > pos) startRun = i;
-        if (runEnd >= end) { endRun = i; break; }
-        cum += texts[i].length;
+      // Mapper la position normalisée → position dans rawFull
+      // On fait correspondre caractère par caractère
+      let rawPos = 0, nPos = 0;
+      while (nPos < normPos && rawPos < rawFull.length) {
+        const rawChar = rawFull[rawPos];
+        const normChar = norm(rawChar);
+        nPos += normChar.length;
+        rawPos++;
       }
-      if (startRun === null || endRun === null) continue;
+      // rawPos est maintenant ~ la position de début dans rawFull
+      const rawStart = rawPos;
+      const rawEnd = rawStart + original.length;
 
-      // Get formatting from first run
-      const firstRunXml = runMatches[startRun][0];
-      const rprMatch = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+      // Trouver quels runs sont concernés
+      let cum = 0;
+      let startRunIdx = null, endRunIdx = null;
+      for (let i = 0; i < runs.length; i++) {
+        const runEnd = cum + runs[i].text.length;
+        if (startRunIdx === null && runEnd > rawStart) startRunIdx = i;
+        if (endRunIdx === null && runEnd >= rawEnd) { endRunIdx = i; break; }
+        cum += runs[i].text.length;
+      }
+
+      if (startRunIdx === null || endRunIdx === null) {
+        console.warn("[TC] Runs non trouvés pour:", JSON.stringify(original.substring(0, 60)));
+        continue;
+      }
+
+      // Récupérer la mise en forme du premier run concerné
+      const firstRun = runs[startRunIdx];
+      const rprMatch = firstRun.xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
       const rpr = rprMatch ? rprMatch[0] : "";
 
-      // Text before/after match within the spanned runs
-      const spanStart = texts.slice(0, startRun).join("").length;
-      const spanEnd = texts.slice(0, endRun + 1).join("").length;
-      const preText = combined.slice(spanStart, pos);
-      const postText = combined.slice(end, spanEnd);
+      // Texte exact dans le document (avec les vrais caractères, pas normalisés)
+      const spanStart = runs.slice(0, startRunIdx).reduce((s, r) => s + r.text.length, 0);
+      const spanEnd = runs.slice(0, endRunIdx + 1).reduce((s, r) => s + r.text.length, 0);
+      const preText = rawFull.slice(spanStart, rawStart);
+      const postText = rawFull.slice(rawEnd, spanEnd);
+      const actualOriginal = rawFull.slice(rawStart, rawEnd);
 
-      const preXml = preText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>` : "";
-      const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
-      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(originalToUse)}</w:delText></w:r></w:del>`;
-      const insBlock = `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
-      const replacement = preXml + delBlock + insBlock + postXml;
+      // Construire les blocs XML de track change
+      const preXml  = preText  ? \`<w:r>\${rpr}<w:t xml:space="preserve">\${escXml(preText)}</w:t></w:r>\`  : "";
+      const postXml = postText ? \`<w:r>\${rpr}<w:t xml:space="preserve">\${escXml(postText)}</w:t></w:r>\` : "";
+      const delXml  = \`<w:del w:id="\${changeId++}" w:author="OCE Correction" w:date="\${date}"><w:r>\${rpr}<w:delText xml:space="preserve">\${escXml(actualOriginal)}</w:delText></w:r></w:del>\`;
+      const insXml  = \`<w:ins w:id="\${changeId++}" w:author="OCE Correction" w:date="\${date}"><w:r>\${rpr}<w:t xml:space="preserve">\${escXml(suggested)}</w:t></w:r></w:ins>\`;
 
-      const firstStart = runMatches[startRun].index;
-      const lastEnd = runMatches[endRun].index + runMatches[endRun][0].length;
-      result = result.slice(0, firstStart) + replacement + result.slice(lastEnd);
+      const replacement = preXml + delXml + insXml + postXml;
+
+      // Remplacer dans le XML complet du document
+      const xmlStart = runs[startRunIdx].start;
+      const xmlEnd   = runs[endRunIdx].end;
+      result = result.slice(0, xmlStart) + replacement + result.slice(xmlEnd);
+
+      console.log(\`[TC] ✅ "\${actualOriginal.substring(0,40)}" → "\${suggested.substring(0,40)}"\`);
     }
     return result;
   };
+
+  // Ancienne fonction gardée pour compatibilité (non utilisée)
+  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => paraXml;
 
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
@@ -415,13 +431,9 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const zip = await JSZip.loadAsync(fileBytes);
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
-      const changeId = [100];
 
-      // Process paragraph by paragraph
       const correctionsList = accepted.map(c => ({ original: c.original, suggested: c.suggested }));
-      const result = docXml.replace(/(<w:p[ >][\s\S]*?<\/w:p>)/g, (para) =>
-        applyTrackChangesToPara(para, correctionsList, changeId, date)
-      );
+      const result = applyAllTrackChanges(docXml, correctionsList, date);
 
       zip.file("word/document.xml", result);
       const blob = await zip.generateAsync({
