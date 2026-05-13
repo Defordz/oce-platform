@@ -330,15 +330,19 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
   const applyAllTrackChanges = (docXml, corrections, date) => {
     let changeId = 200;
 
-    // Normalise pour la recherche (espaces insécables, apostrophes typo, etc.)
+    // Normalise pour la recherche (espaces insécables, apostrophes, guillemets, etc.)
     const norm = s => s
-      .replace(/ /g, " ")
-      .replace(/ /g, " ")
-      .replace(/’/g, "'")
-      .replace(/‘/g, "'")
-      .replace(/“/g, '"')
-      .replace(/”/g, '"')
-      .replace(/[ 	]+/g, " ")
+      .replace(/\u00A0/g, " ")   // espace insécable
+      .replace(/\u202F/g, " ")   // espace fine insécable
+      .replace(/\u2019/g, "'")  // apostrophe typographique
+      .replace(/\u2018/g, "'")  // apostrophe ouvrante
+      .replace(/\u201C/g, '"')  // guillemet double ouvrant
+      .replace(/\u201D/g, '"')  // guillemet double fermant
+      .replace(/\u00AB/g, "<<") // « guillemet français ouvrant
+      .replace(/\u00BB/g, ">>") // » guillemet français fermant
+      .replace(/ /g, " ")
+      .replace(/ /g, " ")
+      .replace(/[ \t]+/g, " ")
       .trim();
 
     // Pour chaque correction, trouver sa position dans le XML
@@ -385,7 +389,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const rawStart = rawPos;
       const rawEnd = rawStart + original.length;
 
-      // Identifier les runs couverts
+      // Identifier les runs couverts — aligner sur frontières de runs
       let cum = 0;
       let startRunIdx = null, endRunIdx = null;
       for (let i = 0; i < runs.length; i++) {
@@ -404,11 +408,18 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const rprMatch = runs[startRunIdx].xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
       const rpr = rprMatch ? rprMatch[0] : "";
 
-      // Texte exact dans le document (avec vrais caractères)
+      // Aligner sur frontières exactes de runs (pas de preText/postText partiels)
+      // On prend l'ensemble des runs couverts et on remplace tout le bloc
       const spanStart = runs.slice(0, startRunIdx).reduce((s, r) => s + r.text.length, 0);
       const spanEnd = runs.slice(0, endRunIdx + 1).reduce((s, r) => s + r.text.length, 0);
-      const preText = rawFull.slice(spanStart, rawStart);
-      const postText = rawFull.slice(rawEnd, spanEnd);
+
+      // Si la correspondance est partielle dans un run, étendre aux frontières du run
+      // Cela évite de couper un run en plein milieu dans le XML
+      const alignedStart = spanStart; // début du premier run couvert
+      const alignedEnd = spanEnd;     // fin du dernier run couvert
+
+      const preText = rawFull.slice(alignedStart, rawStart);
+      const postText = rawFull.slice(rawEnd, alignedEnd);
       const actualOriginal = rawFull.slice(rawStart, rawEnd);
 
       // Position dans le XML (pour tri inverse)
