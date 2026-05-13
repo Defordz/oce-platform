@@ -437,11 +437,8 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     return result;
   };
 
-  // Stub pour compatibilité
+  // eslint-disable-next-line no-unused-vars
   const applyTrackChangesToPara = (paraXml) => paraXml;
-
-  // Ancienne fonction gardée pour compatibilité (non utilisée)
-  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => paraXml;
 
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
