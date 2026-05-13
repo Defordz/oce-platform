@@ -402,10 +402,10 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const actualOriginal = rawFull.slice(rawStart, rawEnd);
 
       // Construire les blocs XML de track change
-      const preXml  = preText  ? \`<w:r>\${rpr}<w:t xml:space="preserve">\${escXml(preText)}</w:t></w:r>\`  : "";
-      const postXml = postText ? \`<w:r>\${rpr}<w:t xml:space="preserve">\${escXml(postText)}</w:t></w:r>\` : "";
-      const delXml  = \`<w:del w:id="\${changeId++}" w:author="OCE Correction" w:date="\${date}"><w:r>\${rpr}<w:delText xml:space="preserve">\${escXml(actualOriginal)}</w:delText></w:r></w:del>\`;
-      const insXml  = \`<w:ins w:id="\${changeId++}" w:author="OCE Correction" w:date="\${date}"><w:r>\${rpr}<w:t xml:space="preserve">\${escXml(suggested)}</w:t></w:r></w:ins>\`;
+      const preXml  = preText  ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>`  : "";
+      const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
+      const delXml  = `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(actualOriginal)}</w:delText></w:r></w:del>`;
+      const insXml  = `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
 
       const replacement = preXml + delXml + insXml + postXml;
 
@@ -414,7 +414,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const xmlEnd   = runs[endRunIdx].end;
       result = result.slice(0, xmlStart) + replacement + result.slice(xmlEnd);
 
-      console.log(\`[TC] ✅ "\${actualOriginal.substring(0,40)}" → "\${suggested.substring(0,40)}"\`);
+      console.log(`[TC] ✅ "${actualOriginal.substring(0,40)}" → "${suggested.substring(0,40)}"`);
     }
     return result;
   };
