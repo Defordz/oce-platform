@@ -953,18 +953,16 @@ Codes existants à éviter : ${consignes.map(c=>c.code).join(", ")}`;
     setLoading(true);
 
     try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      const resp = await fetch("/api/chat-consigne", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 2000,
-          system: systemPrompt,
           messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+          existingCodes: consignes.map(c => c.code),
         }),
       });
       const data = await resp.json();
-      const text = data.content?.map(c => c.text||"").join("") || "Erreur de réponse.";
+      const text = data.text || data.error || "Erreur de réponse.";
 
       // Extraire la consigne du JSON si présente
       const jsonMatch = text.match(/---CONSIGNE---\s*([\s\S]*?)\s*---FIN---/);
