@@ -286,5 +286,61 @@
     "regex": null,
     "created": "2026-04-23",
     "version": "2.0"
+  },
+  {
+    "code": "F-14",
+    "doctype": "cp_fr",
+    "category": "FORME",
+    "label": "Mention 'la société' devant les noms d'entreprises",
+    "text": "Dans le titre du communiqué et dans la section 'RÉSUMÉ NON CONFIDENTIEL DE L'OPÉRATION FOURNI PAR LES PARTIES', tout nom de société entre guillemets doit être précédé de la mention 'la société'. Cette règle s'applique aux expressions comme 'prise de contrôle par', 'acquisition de', 'fusion de', etc.",
+    "examples": "prise du contrôle conjoint par « XXXX » → prise du contrôle conjoint par la société « XXXX »\nde « XXXX » → de la société « XXXX »\nacquisition par « ABC » → acquisition par la société « ABC »\nfusion entre « XYZ » et « DEF » → fusion entre la société « XYZ » et la société « DEF »",
+    "regex": [
+      {
+        "find": "\\b(par|de|entre)\\s+«\\s*([^»]+)\\s*»",
+        "replace": "$1 la société « $2 »",
+        "flags": "gi",
+        "label": "Ajout de 'la société' avant les noms entre guillemets précédés de par/de/entre"
+      },
+      {
+        "find": "\\b(et)\\s+«\\s*([^»]+)\\s*»",
+        "replace": "$1 la société « $2 »",
+        "flags": "gi",
+        "label": "Ajout de 'la société' avant les noms entre guillemets précédés de 'et'"
+      }
+    ],
+    "id": "F-14",
+    "version": "1.0",
+    "created": "13/05/2026"
+  },
+  {
+    "code": "F-15",
+    "doctype": "cp_fr",
+    "category": "FORME",
+    "label": "Concordance de genre grammatical",
+    "text": "Vérifier que les accords de genre (masculin/féminin) sont corrects entre les déterminants, adjectifs, participes passés et noms. Notamment : 'la société... notifiée' (fém.), 'le groupe... notifié' (masc.), 'l'opération... autorisée' (fém.), 'le projet... autorisé' (masc.). Attention particulière aux sociétés (féminin) et groupes (masculin).",
+    "examples": "la société X a été notifié → la société X a été notifiée\nle groupe Y a été notifiée → le groupe Y a été notifié\nl'opération portant sur le rachat... autorisé → l'opération portant sur le rachat... autorisée\nla concentration économique... autorisé → la concentration économique... autorisée",
+    "regex": [
+      {
+        "find": "\\b(la|une|cette)\\s+(société|entreprise|entité|opération|concentration|notification|transaction)\\s+([^.]*?)\\s+(notifié|autorisé|enregistré|examiné|réalisé|approuvé|rejeté)\\b",
+        "replace": "$1 $2 $3 $4e",
+        "flags": "gi",
+        "label": "Accords féminins (société, opération, etc.)"
+      },
+      {
+        "find": "\\b(le|un|ce)\\s+(groupe|projet|dossier|cas|accord)\\s+([^.]*?)\\s+(notifiée|autorisée|enregistrée|examinée|réalisée|approuvée|rejetée)\\b",
+        "replace": "$1 $2 $3 $4",
+        "flags": "gi",
+        "label": "Accords masculins (groupe, projet, etc.) - retire 'e' final"
+      },
+      {
+        "find": "\\bla société\\s+([A-Z][^,\\.]*?)\\s+a été notifié\\b",
+        "replace": "la société $1 a été notifiée",
+        "flags": "g",
+        "label": "Société notifiée (participe passé)"
+      }
+    ],
+    "id": "F-15",
+    "version": "1.0",
+    "created": "13/05/2026"
   }
 ]
