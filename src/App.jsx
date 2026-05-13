@@ -324,57 +324,68 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     .replace(/[ 	]+/g, " ")    // espaces multiples → un seul
     .trim();
 
-  // ── APPLY TRACK CHANGES : approche document-level ──
-  // Au lieu de travailler paragraphe par paragraphe (qui rate les textes
-  // fragmentés entre plusieurs <w:r>), on travaille sur le XML complet
-  // du document en une seule passe.
+  // ── APPLY TRACK CHANGES : approche document-level inverse ──
+  // Traite les corrections de la FIN vers le DÉBUT du XML
+  // pour éviter que chaque remplacement invalide les positions suivantes
   const applyAllTrackChanges = (docXml, corrections, date) => {
-    let result = docXml;
     let changeId = 200;
+
+    // Normalise pour la recherche (espaces insécables, apostrophes typo, etc.)
+    const norm = s => s
+      .replace(/ /g, " ")
+      .replace(/ /g, " ")
+      .replace(/’/g, "'")
+      .replace(/‘/g, "'")
+      .replace(/“/g, '"')
+      .replace(/”/g, '"')
+      .replace(/[ 	]+/g, " ")
+      .trim();
+
+    // Pour chaque correction, trouver sa position dans le XML
+    // puis trier par position décroissante avant d'appliquer
+    const toApply = [];
 
     for (const { original, suggested } of corrections) {
       if (!original || !suggested || original === suggested) continue;
 
-      // Extraire tous les runs du document sous forme de [{xml, text, start, end}]
+      // Extraire tous les runs avec leurs positions XML
       const RUN_RE = /<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>/g;
       const runs = [];
       let m;
       RUN_RE.lastIndex = 0;
-      while ((m = RUN_RE.exec(result)) !== null) {
+      while ((m = RUN_RE.exec(docXml)) !== null) {
         const tMatch = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
         runs.push({
           xml: m[0],
           text: tMatch ? tMatch[1] : "",
-          start: m.index,
-          end: m.index + m[0].length,
+          xmlStart: m.index,
+          xmlEnd: m.index + m[0].length,
         });
       }
 
-      // Reconstruire le texte complet normalisé pour la recherche
+      // Texte complet du document (raw + normalisé)
       const rawFull = runs.map(r => r.text).join("");
       const normFull = norm(rawFull);
       const normOrig = norm(original);
 
       const normPos = normFull.indexOf(normOrig);
       if (normPos === -1) {
-        console.warn("[TC] Non trouvé:", JSON.stringify(original.substring(0, 60)));
+        console.warn("[TC] Non trouvé:", JSON.stringify(original.substring(0, 50)));
         continue;
       }
 
-      // Mapper la position normalisée → position dans rawFull
-      // On fait correspondre caractère par caractère
+      // Mapper position normalisée → position raw caractère par caractère
       let rawPos = 0, nPos = 0;
       while (nPos < normPos && rawPos < rawFull.length) {
-        const rawChar = rawFull[rawPos];
-        const normChar = norm(rawChar);
-        nPos += normChar.length;
+        const ch = rawFull[rawPos];
+        const nch = norm(ch) || " ";
+        nPos += nch.length;
         rawPos++;
       }
-      // rawPos est maintenant ~ la position de début dans rawFull
       const rawStart = rawPos;
       const rawEnd = rawStart + original.length;
 
-      // Trouver quels runs sont concernés
+      // Identifier les runs couverts
       let cum = 0;
       let startRunIdx = null, endRunIdx = null;
       for (let i = 0; i < runs.length; i++) {
@@ -385,39 +396,49 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       }
 
       if (startRunIdx === null || endRunIdx === null) {
-        console.warn("[TC] Runs non trouvés pour:", JSON.stringify(original.substring(0, 60)));
+        console.warn("[TC] Runs non trouvés:", JSON.stringify(original.substring(0, 50)));
         continue;
       }
 
-      // Récupérer la mise en forme du premier run concerné
-      const firstRun = runs[startRunIdx];
-      const rprMatch = firstRun.xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+      // Récupérer la mise en forme du premier run
+      const rprMatch = runs[startRunIdx].xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
       const rpr = rprMatch ? rprMatch[0] : "";
 
-      // Texte exact dans le document (avec les vrais caractères, pas normalisés)
+      // Texte exact dans le document (avec vrais caractères)
       const spanStart = runs.slice(0, startRunIdx).reduce((s, r) => s + r.text.length, 0);
       const spanEnd = runs.slice(0, endRunIdx + 1).reduce((s, r) => s + r.text.length, 0);
       const preText = rawFull.slice(spanStart, rawStart);
       const postText = rawFull.slice(rawEnd, spanEnd);
       const actualOriginal = rawFull.slice(rawStart, rawEnd);
 
-      // Construire les blocs XML de track change
+      // Position dans le XML (pour tri inverse)
+      const xmlStart = runs[startRunIdx].xmlStart;
+      const xmlEnd = runs[endRunIdx].xmlEnd;
+
+      toApply.push({ xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr });
+      console.log(`[TC] ✅ Trouvé: "${actualOriginal.substring(0, 40)}" → "${suggested.substring(0, 40)}"`);
+    }
+
+    // Trier par position XML décroissante (fin → début)
+    // Ainsi chaque remplacement n'invalide pas les positions des suivants
+    toApply.sort((a, b) => b.xmlStart - a.xmlStart);
+
+    // Appliquer les remplacements dans l'ordre inverse
+    let result = docXml;
+    for (const { xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr } of toApply) {
       const preXml  = preText  ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>`  : "";
       const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
       const delXml  = `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(actualOriginal)}</w:delText></w:r></w:del>`;
       const insXml  = `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
-
       const replacement = preXml + delXml + insXml + postXml;
-
-      // Remplacer dans le XML complet du document
-      const xmlStart = runs[startRunIdx].start;
-      const xmlEnd   = runs[endRunIdx].end;
       result = result.slice(0, xmlStart) + replacement + result.slice(xmlEnd);
-
-      console.log(`[TC] ✅ "${actualOriginal.substring(0,40)}" → "${suggested.substring(0,40)}"`);
     }
+
     return result;
   };
+
+  // Stub pour compatibilité
+  const applyTrackChangesToPara = (paraXml) => paraXml;
 
   // Ancienne fonction gardée pour compatibilité (non utilisée)
   const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => paraXml;
