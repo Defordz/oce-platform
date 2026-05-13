@@ -1,75 +1,66 @@
-// api/analyze.js — Vercel Serverless Function
-// Appelé par le frontend pour analyser un document avec Claude
+// api/analyze.js — Passe 1 : Claude détecte les problèmes
+// Passe 2 (application via regex) est dans App.jsx
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const { text, docType, consignes, activeOpts } = req.body;
-
   if (!text) return res.status(400).json({ error: 'text requis' });
 
   const typeLabel = {
     cp_fr: 'communiqué de presse en français relatif à une opération de concentration économique',
     cp_ar: 'بلاغ صحفي بالعربية متعلق بعملية التركيز الاقتصادي',
-    bilingue: 'document bilingue FR/AR relatif à une opération de concentration économique',
+    bilingue: 'document bilingue FR/AR',
     decision_ar: 'قرار مجلس المنافسة بالعربية',
   }[docType] || 'document juridique';
 
-  // Toutes les consignes du type concerné, texte complet
-  const consignesFiltered = (consignes || [])
-    .filter(c => c.doctype === docType || c.doctype === 'tous');
+  const allConsignes = (consignes || []).filter(c => c.doctype === docType || c.doctype === 'tous');
+  const withRegex    = allConsignes.filter(c => c.regex !== null && c.regex !== undefined);
+  const withoutRegex = allConsignes.filter(c => c.regex === null || c.regex === undefined);
 
-  const consignesText = consignesFiltered
-    .map(c => {
-      let entry = `[${c.code}] ${c.label}: ${c.text}`;
-      if (c.examples) entry += `\n   Exemples: ${c.examples}`;
-      return entry;
-    })
-    .join('\n\n');
+  const regexSummary = withRegex.map(c =>
+    `[${c.code}] ${c.label} — application automatique par regex`
+  ).join('\n');
 
-  const systemPrompt = `Tu es rapporteur expert au Conseil de la Concurrence du Maroc spécialisé en concentrations économiques.
+  const claudeSummary = withoutRegex.map(c => {
+    let e = `[${c.code}] ${c.label}: ${c.text}`;
+    if (c.examples) e += `\n   Exemples: ${c.examples}`;
+    return e;
+  }).join('\n\n');
 
-Analyse ce ${typeLabel} et applique TOUTES les consignes suivantes sans exception :
+  const systemPrompt = `Tu es rapporteur expert au Conseil de la Concurrence du Maroc.
+Analyse ce ${typeLabel}.
 
-=== CONSIGNES OBLIGATOIRES (${consignesFiltered.length} consignes) ===
-${consignesText}
-=== FIN DES CONSIGNES ===
+=== CONSIGNES AUTOMATIQUES (regex) — indiquer si applicable ===
+${regexSummary || '(aucune)'}
 
-OPTIONS ACTIVES : ${activeOpts || 'forme, fond, terminologie'}
+=== CONSIGNES MANUELLES — fournir texte exact du document ===
+${claudeSummary || '(aucune)'}
 
-INSTRUCTIONS STRICTES :
-- Vérifie le document par rapport à CHAQUE consigne listée ci-dessus
-- Si une consigne s'applique au document, génère une correction même si l'erreur semble mineure
-- Le champ "original" doit contenir le texte EXACT tel qu'il apparaît dans le document, en incluant suffisamment de contexte (5 à 10 mots autour de l'erreur) pour que le texte soit unique dans le document
-- Ne jamais isoler juste un nom de société — toujours inclure les mots qui précèdent et suivent
-- Exemple correct : "original": "de «Adeesy SARLAU» aux côtés" (avec contexte)
-- Exemple incorrect : "original": "«Adeesy SARLAU»" (trop court, ambigu)
-- Le champ "code" doit contenir le code de la consigne appliquée (ex: F-13)
-- Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks
+OPTIONS : ${activeOpts || 'forme, fond, terminologie'}
 
-Format JSON exact :
+RÈGLES STRICTES :
+- Consignes automatiques → type="regex_auto", original="" et suggested="" vides
+- Consignes manuelles → original = texte EXACT du document avec 8-10 mots de contexte
+- Réponds UNIQUEMENT en JSON valide sans markdown
+
+Format :
 {
   "score": <1-10>,
-  "synthese": "<2-3 phrases de synthèse mentionnant les consignes appliquées>",
+  "synthese": "<2-3 phrases>",
+  "regex_applicable": ["F-12","F-13","D-05"],
   "corrections": [
-    {
-      "type": "forme" | "fond" | "terminologie" | "bilingue",
-      "code": "<code consigne obligatoire>",
-      "original": "<texte exact extrait du document>",
-      "suggested": "<texte corrigé>",
-      "reason": "<explication courte citant la consigne>"
-    }
+    {"type":"regex_auto","code":"F-12","original":"","suggested":"","reason":"Guillemets sans espaces"},
+    {"type":"fond","code":"D-07","original":"société anonyme au capital social","suggested":"société anonyme de droit marocain au capital social","reason":"Droit applicable manquant"}
   ]
 }`;
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -78,31 +69,28 @@ Format JSON exact :
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1500,
+        max_tokens: 2000,
         system: systemPrompt,
-        messages: [{ role: 'user', content: `Analyse ce document :\n\n${text.substring(0, 4000)}` }],
+        messages: [{ role: 'user', content: `Analyse:\n\n${text.substring(0, 5000)}` }],
       }),
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      console.error('Anthropic API error:', err);
+    if (!resp.ok) {
+      const err = await resp.text();
       return res.status(500).json({ error: 'Erreur API Claude', detail: err });
     }
 
-    const data = await response.json();
+    const data = await resp.json();
     const raw = data.content.map(c => c.text || '').join('');
-
     let parsed;
-    try {
-      parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    } catch {
-      return res.status(500).json({ error: 'Réponse JSON invalide de Claude', raw });
-    }
+    try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()); }
+    catch { return res.status(500).json({ error: 'JSON invalide', raw }); }
+
+    // Passer les consignes regex au frontend pour la Passe 2
+    parsed.regexConsignes = withRegex;
 
     return res.status(200).json(parsed);
   } catch (err) {
-    console.error('Server error:', err);
     return res.status(500).json({ error: 'Erreur serveur', detail: err.message });
   }
 }

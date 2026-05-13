@@ -4,84 +4,164 @@
     "code": "F-01",
     "doctype": "cp_fr",
     "category": "FORME",
-    "label": "Formule d'ouverture FR",
-    "text": "Le Conseil de la Concurrence met à la disposition du public le « résumé de l'opération ». Vérifier l'absence de mots parasites dans le verbe \"met\".",
+    "label": "Formule d'ouverture — mots parasites dans 'met'",
+    "text": "Le verbe 'met' dans la formule d'ouverture ne doit pas contenir de mots parasites.",
     "examples": "Incorrect : dsdmet → Correct : met",
     "notes": "Art. 13 loi n°104-12",
+    "regex": {
+      "find": "\\b\\w*(?:dsd|pds|cds|bds)met\\b",
+      "replace": "met",
+      "flags": "gi",
+      "scope": "all"
+    },
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "F-02",
     "code": "F-02",
     "doctype": "cp_fr",
     "category": "FORME",
-    "label": "Désignation officielle institution",
-    "text": "\"Conseil de la Concurrence\" avec deux majuscules C. Vérifier chaque occurrence dans le document.",
-    "examples": "Incorrect : Codsdncurrence → Correct : Concurrence\nIncorrect : conseil de la concurrence → Correct : Conseil de la Concurrence",
+    "label": "Désignation officielle de l'institution",
+    "text": "\"Conseil de la Concurrence\" — orthographe correcte sans mots parasites.",
+    "examples": "Incorrect : Codsdncurrence → Correct : Concurrence\nIncorrect : Concurence → Correct : Concurrence",
     "notes": "Nom officiel",
+    "regex": {
+      "find": "Co(?:[a-z]{0,4}dsd[a-z]*|ncu)rence\\b",
+      "replace": "Concurrence",
+      "flags": "g",
+      "scope": "all"
+    },
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "F-03",
     "code": "F-03",
     "doctype": "cp_fr",
     "category": "FORME",
-    "label": "Formule de complétude",
-    "text": "\"pris pour l'application\" — vérifier l'absence de mots parasites dans \"pour\".",
+    "label": "Formule de complétude — mots parasites dans 'pour'",
+    "text": "\"pris pour l'application\" — vérifier l'absence de mots parasites dans 'pour'.",
     "examples": "Incorrect : pdsour → Correct : pour",
     "notes": "Art. 9 décret n°2-14-652",
+    "regex": {
+      "find": "\\bp[a-z]*ds[a-z]*our\\b",
+      "replace": "pour",
+      "flags": "gi",
+      "scope": "all"
+    },
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "F-08",
     "code": "F-08",
     "doctype": "cp_fr",
     "category": "FORME",
-    "label": "Délai observations — tiers intéressés",
-    "text": "\"tiers intéressés\" — orthographe sans insertion parasite.",
+    "label": "Tiers intéressés — orthographe",
+    "text": "\"tiers intéressés\" sans insertion parasite.",
     "examples": "Incorrect : indstéressés → Correct : intéressés",
     "notes": "Erreur de frappe fréquente",
+    "regex": {
+      "find": "inds[a-z]*[tT][eéè]ress[eé]s",
+      "replace": "intéressés",
+      "flags": "gi",
+      "scope": "all"
+    },
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
+  },
+  {
+    "id": "F-13",
+    "code": "F-13",
+    "doctype": "cp_fr",
+    "category": "FORME",
+    "label": "Mention 'la société' avant dénominations sociales",
+    "text": "Dans le titre et dans le RÉSUMÉ NON CONFIDENTIEL, le nom société doit toujours être précédé par la mention 'la société'. Ne pas appliquer dans les rubriques (L'acquéreur, La cible, etc.).",
+    "examples": "TITRE — Incorrect : SA» de «Adeesy SARLAU» aux côtés → Correct : SA» de la société «Adeesy SARLAU» aux côtés\nRÉSUMÉ — Incorrect : «Adeesy SARLAU» au capital social → Correct : La société «Adeesy SARLAU» au capital social",
+    "notes": "Vérifier titre ET résumé séparément",
+    "regex": [
+      {
+        "find": "(?<!la société )(?<!société )(?<!La société )(?<!La Société )(de\\s+)(«\\s*)([^»]{3,}»)",
+        "replace": "$1la société $2$3",
+        "flags": "g",
+        "scope": "all",
+        "label": "de «...» sans la société"
+      },
+      {
+        "find": "(?<!la société )(?<!La société )(«\\s*[A-ZÁÀÂÉÈÊÎÏÔÙÛÇ][^»]{3,}»)\\s+(au capital|est une|dont le|immatriculée)",
+        "replace": "La société $1 $2",
+        "flags": "g",
+        "scope": "all",
+        "label": "«...» début de phrase sans La société"
+      }
+    ],
+    "created": "2026-04-23",
+    "version": "2.0"
   },
   {
     "id": "F-12",
     "code": "F-12",
     "doctype": "cp_fr",
     "category": "FORME",
-    "label": "Guillemets français obligatoires",
-    "text": "Utiliser « … » avec espaces insécables pour toutes les dénominations sociales.",
-    "examples": "Incorrect : \"Société X\" → Correct : « Société X »",
+    "label": "Guillemets français — espaces insécables",
+    "text": "Les guillemets français « et » doivent être suivis/précédés d'une espace.",
+    "examples": "Incorrect : «Société X» → Correct : « Société X »",
     "notes": "Typographie française",
+    "regex": [
+      {
+        "find": "«([^\\s«»])",
+        "replace": "« $1",
+        "flags": "g",
+        "scope": "all",
+        "label": "espace après «"
+      },
+      {
+        "find": "([^\\s«»])»",
+        "replace": "$1 »",
+        "flags": "g",
+        "scope": "all",
+        "label": "espace avant »"
+      }
+    ],
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "D-01",
     "code": "D-01",
     "doctype": "cp_fr",
     "category": "FOND",
-    "label": "Prise de contrôle exclusif — formule",
-    "text": "\"prise du contrôle exclusif par [acquéreur] de [cible]\" — \"du\" obligatoire.",
+    "label": "Prise de contrôle exclusif — formulation",
+    "text": "Formule : 'prise du contrôle exclusif par [acquéreur] de [cible]'. 'du' contrôle obligatoire.",
     "examples": "Incorrect : prise de le contrôle → Correct : prise du contrôle",
     "notes": "Art. 11 loi n°104-12",
+    "regex": {
+      "find": "prise de le contrôle",
+      "replace": "prise du contrôle",
+      "flags": "gi",
+      "scope": "all"
+    },
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "D-05",
     "code": "D-05",
     "doctype": "cp_fr",
     "category": "FOND",
-    "label": "Cohérence titre / résumé",
-    "text": "Ne pas cumuler \"opération de\" et \"projet de\". Choisir l'un ou l'autre.",
+    "label": "Cohérence titre / résumé — formulation opération",
+    "text": "Ne pas cumuler 'opération de' et 'projet de'.",
     "examples": "Incorrect : opération de projet de concentration → Correct : opération de concentration",
     "notes": "Vérifier systématiquement",
+    "regex": {
+      "find": "opération de projet de concentration",
+      "replace": "opération de concentration",
+      "flags": "gi",
+      "scope": "all"
+    },
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "D-07",
@@ -89,11 +169,66 @@
     "doctype": "cp_fr",
     "category": "FOND",
     "label": "Droit applicable des sociétés",
-    "text": "Préciser \"de droit marocain\" ou \"de droit [pays]\" à la première mention de chaque partie.",
-    "examples": "Incorrect : société anonyme → Correct : société anonyme de droit marocain",
-    "notes": "Vérifier pour chaque partie",
+    "text": "Préciser 'de droit marocain' ou 'de droit [pays]' à la première mention de chaque partie.",
+    "examples": "Incorrect : société anonyme au capital → Correct : société anonyme de droit marocain au capital",
+    "notes": "Pas de regex — détection Claude uniquement",
+    "regex": null,
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
+  },
+  {
+    "id": "FORME-01",
+    "code": "FORME-01",
+    "doctype": "tous",
+    "category": "FORME",
+    "label": "Madame — orthographe",
+    "text": "Madame sans double lettre.",
+    "examples": "Incorrect : Madamme → Correct : Madame",
+    "notes": "Erreur de frappe fréquente",
+    "regex": {
+      "find": "\\bMadamme\\b",
+      "replace": "Madame",
+      "flags": "g",
+      "scope": "all"
+    },
+    "created": "2026-04-23",
+    "version": "2.0"
+  },
+  {
+    "id": "FORME-02",
+    "code": "FORME-02",
+    "doctype": "tous",
+    "category": "FORME",
+    "label": "Personne physique — formulation",
+    "text": "Écrire 'est une personne physique' et non 'est une physique'.",
+    "examples": "Incorrect : est une physique → Correct : est une personne physique",
+    "notes": "Mot manquant fréquent",
+    "regex": {
+      "find": "\\best une physique\\b",
+      "replace": "est une personne physique",
+      "flags": "gi",
+      "scope": "all"
+    },
+    "created": "2026-04-23",
+    "version": "2.0"
+  },
+  {
+    "id": "FORME-03",
+    "code": "FORME-03",
+    "doctype": "tous",
+    "category": "FORME",
+    "label": "Accord — entreprises et groupes concernés",
+    "text": "'entreprises et groupes concernés' au masculin pluriel.",
+    "examples": "Incorrect : entreprises et groupes concernées → Correct : entreprises et groupes concernés",
+    "notes": "Accord grammatical avec 'groupes'",
+    "regex": {
+      "find": "entreprises et groupes concern[ée]es",
+      "replace": "entreprises et groupes concernés",
+      "flags": "gi",
+      "scope": "all"
+    },
+    "created": "2026-04-23",
+    "version": "2.0"
   },
   {
     "id": "A-01",
@@ -103,9 +238,10 @@
     "label": "الصيغة الافتتاحية",
     "text": "طبقا للمادة 13 من القانون رقم 12.104 المتعلق بحرية الأسعار والمنافسة والمادة 10 من المرسوم التطبيقي رقم 652.14.2 كما تم تغييرهما وتتميمهما، يضع مجلس المنافسة رهن إشارة العموم ملخص العملية.",
     "examples": "الصيغة ثابتة — عدم التعديل",
-    "notes": "نص ثابت",
+    "notes": "نص ثابت — pas de regex",
+    "regex": null,
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "A-07",
@@ -113,11 +249,17 @@
     "doctype": "cp_ar",
     "category": "TERMINOLOGIE",
     "label": "الجهة المقتنية",
-    "text": "استخدام \"الجهة المقتنية\" وليس \"المستحوذ\" ولا \"المشتري\".",
+    "text": "استخدام 'الجهة المقتنية' وليس 'المستحوذ' ولا 'المشتري'.",
     "examples": "غير صحيح : المستحوذ → صحيح : الجهة المقتنية",
     "notes": "مصطلح رسمي معتمد",
+    "regex": {
+      "find": "\\bالمستحوذ\\b",
+      "replace": "الجهة المقتنية",
+      "flags": "g",
+      "scope": "all"
+    },
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "B-02",
@@ -127,9 +269,10 @@
     "label": "Qualification FR↔AR",
     "text": "contrôle exclusif ↔ المراقبة الحصرية / contrôle conjoint ↔ المراقبة المشتركة",
     "examples": "FR: contrôle exclusif ↔ AR: المراقبة الحصرية",
-    "notes": "Comparer terme à terme",
+    "notes": "Pas de regex — détection Claude uniquement",
+    "regex": null,
     "created": "2026-04-23",
-    "version": "1.0"
+    "version": "2.0"
   },
   {
     "id": "B-03",
@@ -139,20 +282,9 @@
     "label": "Chiffres cohérence FR↔AR",
     "text": "Pourcentages, capitaux et numéros RC identiques dans les deux versions.",
     "examples": "FR: 45% ↔ AR: 45 في المائة",
-    "notes": "Vérifier arithmétiquement",
+    "notes": "Pas de regex — détection Claude uniquement",
+    "regex": null,
     "created": "2026-04-23",
-    "version": "1.0"
-  },
-  {
-    "code": "F-13",
-    "id": "F-13",
-    "doctype": "cp_fr",
-    "category": "FORME",
-    "label": "Mention \"la société\" avant les dénominations sociales",
-    "text": "Dans le titre du communiqué et dans le RÉSUMÉ NON CONFIDENTIEL, \ntoute dénomination sociale doit être précédée de \"la société\" \n(ou \"La société\" en début de phrase). \nNe corriger QUE l'absence du mot \"la société\" — ne pas modifier \nle reste de la phrase. \nNe pas appliquer dans les rubriques (L'acquéreur, La cible, etc.).",
-    "examples": "Incorrect : par « La Nouvelle Société Avant-Scène SA» de «Adeesy SARLAU»\nCorrect : par la société « La Nouvelle Société Avant-Scène SA» de la société «Adeesy SARLAU»\n\nIncorrect : «Adeesy SARLAU» au capital social de 100 000 dirhams\nCorrect : La société «Adeesy SARLAU» au capital social de 100 000 dirhams",
-    "notes": "",
-    "version": "1.1",
-    "created": "13/05/2026"
+    "version": "2.0"
   }
 ]

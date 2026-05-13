@@ -154,6 +154,7 @@ function CorrectionPage({consignes, history, setHistory}) {
   const [corrections, setCorrections] = useState([]);
   const [synthese, setSynthese] = useState("");
   const [score, setScore] = useState(null);
+  const [regexConsignes, setRegexConsignes] = useState([]);
   const [statuses, setStatuses] = useState({});
   const [error, setError] = useState("");
   const fileRef = useRef();
@@ -288,7 +289,10 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const raw = data.content[0].text.trim().replace(/^```[\s\S]*?\n/,"").replace(/```[\s]*$/,"").trim();
       const parsed = JSON.parse(raw);
 
-      setCorrections(parsed.corrections || []);
+      // Séparer corrections regex_auto et corrections manuelles
+      const allCorr = parsed.corrections || [];
+      setCorrections(allCorr);
+      setRegexConsignes(parsed.regexConsignes || []);
       setSynthese(parsed.synthese || "");
       setScore(parsed.score);
       setHistory(h => [{id:Date.now(),file:fileName||"Document démo",type:docType,corrections:(parsed.corrections||[]).length,score:parsed.score,date:new Date().toLocaleDateString("fr-FR"),data:parsed.corrections,synthese:parsed.synthese},...h]);
@@ -308,6 +312,137 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+
+
+  // ── PASSE 2 : Application des corrections regex sur le XML Word ──
+  // Chaque consigne avec regex est appliquée directement sur le texte des runs
+  // puis encapsulée en w:del/w:ins pour le mode suivi des modifications
+  const applyRegexCorrections = (docXml, regexConsignes, date) => {
+    if (!regexConsignes || regexConsignes.length === 0) return { xml: docXml, applied: [] };
+
+    let changeId = 100;
+    const applied = [];
+    let result = docXml;
+
+    // Extraire les runs du XML (hors track changes existants)
+    const maskTC = xml => xml
+      .replace(/<w:del[ >][\s\S]*?<\/w:del>/g, m => ' '.repeat(m.length))
+      .replace(/<w:ins[ >][\s\S]*?<\/w:ins>/g, m => ' '.repeat(m.length));
+
+    const RUN_RE = /<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>/g;
+
+    for (const consigne of regexConsignes) {
+      const patterns = Array.isArray(consigne.regex) ? consigne.regex : [consigne.regex];
+
+      for (const pat of patterns) {
+        if (!pat || !pat.find) continue;
+
+        try {
+          const flags = (pat.flags || 'g').includes('g') ? pat.flags : pat.flags + 'g';
+          const regex = new RegExp(pat.find, flags);
+
+          // Travailler sur le XML masqué pour trouver les positions
+          const masked = maskTC(result);
+
+          // Extraire tous les runs avec leurs positions
+          const runs = [];
+          let m;
+          const runRe = new RegExp(RUN_RE.source, 'g');
+          runRe.lastIndex = 0;
+          while ((m = runRe.exec(masked)) !== null) {
+            if (!masked.slice(m.index, m.index + 5).trim()) continue;
+            const tMatch = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+            if (tMatch && tMatch[1]) {
+              runs.push({
+                text: tMatch[1],
+                xmlStart: m.index,
+                xmlEnd: m.index + m[0].length,
+                xml: result.slice(m.index, m.index + m[0].length),
+              });
+            }
+          }
+
+          if (runs.length === 0) continue;
+
+          // Texte concaténé de tous les runs
+          const fullText = runs.map(r => r.text).join('');
+
+          // Trouver toutes les correspondances dans le texte concaténé
+          const matches = [];
+          let match;
+          regex.lastIndex = 0;
+          while ((match = regex.exec(fullText)) !== null) {
+            matches.push({ index: match.index, end: match.index + match[0].length, match });
+            if (!flags.includes('g')) break;
+          }
+
+          if (matches.length === 0) continue;
+
+          // Pour chaque match, trouver les runs couverts et appliquer
+          // Trier en ordre inverse pour ne pas invalider les positions
+          matches.reverse();
+
+          for (const { index: matchStart, end: matchEnd, match: matchObj } of matches) {
+            // Trouver les runs qui couvrent ce match
+            let cum = 0;
+            let sIdx = null, eIdx = null;
+            for (let i = 0; i < runs.length; i++) {
+              const runEnd = cum + runs[i].text.length;
+              if (sIdx === null && runEnd > matchStart) sIdx = i;
+              if (eIdx === null && runEnd >= matchEnd) { eIdx = i; break; }
+              cum += runs[i].text.length;
+            }
+
+            if (sIdx === null || eIdx === null) continue;
+
+            // Calculer le texte original et corrigé
+            const spanStart = runs.slice(0, sIdx).reduce((s, r) => s + r.text.length, 0);
+            const spanEnd   = runs.slice(0, eIdx + 1).reduce((s, r) => s + r.text.length, 0);
+            const originalText = fullText.slice(matchStart, matchEnd);
+
+            // Appliquer le remplacement regex
+            const correctedText = originalText.replace(new RegExp(pat.find, flags.replace('g','')), pat.replace);
+
+            if (originalText === correctedText) continue;
+
+            const preText  = fullText.slice(spanStart, matchStart);
+            const postText = fullText.slice(matchEnd, spanEnd);
+
+            // Récupérer la mise en forme du premier run
+            const rprMatch = runs[sIdx].xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+            const rpr = rprMatch ? rprMatch[0] : '';
+
+            // Construire le XML de remplacement avec track changes
+            const preXml  = preText  ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>`  : '';
+            const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : '';
+            const delXml  = `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(originalText)}</w:delText></w:r></w:del>`;
+            const insXml  = `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(correctedText)}</w:t></w:r></w:ins>`;
+            const replacement = preXml + delXml + insXml + postXml;
+
+            // Appliquer dans le XML réel
+            const xmlStart = runs[sIdx].xmlStart;
+            const xmlEnd   = runs[eIdx].xmlEnd;
+            result = result.slice(0, xmlStart) + replacement + result.slice(xmlEnd);
+
+            applied.push({
+              code: consigne.code,
+              type: 'regex_auto',
+              original: originalText,
+              suggested: correctedText,
+              reason: pat.label || consigne.label,
+            });
+
+            // Recalculer les runs après modification
+            break; // Recalculer au prochain passage
+          }
+        } catch (e) {
+          console.warn(`[REGEX] Erreur pour ${consigne.code}:`, e.message);
+        }
+      }
+    }
+
+    return { xml: result, applied };
+  };
 
   // norm() avec normalisation des guillemets définie dans applyAllTrackChanges
 
@@ -468,8 +603,17 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
 
-      const correctionsList = accepted.map(c => ({ original: c.original, suggested: c.suggested }));
-      const result = applyAllTrackChanges(docXml, correctionsList, date);
+      // PASSE 2A — Appliquer les corrections regex (déterministes)
+      const regexResult = applyRegexCorrections(docXml, regexConsignes, date);
+      let currentXml = regexResult.xml;
+
+      // PASSE 2B — Appliquer les corrections manuelles (Claude text-match)
+      const manualCorrections = accepted
+        .filter(c => c.type !== "regex_auto" && c.original && c.suggested);
+      const result = applyAllTrackChanges(currentXml, manualCorrections, date);
+
+      console.log("[Passe 2A] Regex appliquées:", regexResult.applied.length);
+      console.log("[Passe 2B] Manuelles appliquées:", manualCorrections.length);
 
       zip.file("word/document.xml", result);
       const blob = await zip.generateAsync({
