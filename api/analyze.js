@@ -46,7 +46,10 @@ OPTIONS ACTIVES : ${activeOpts || 'forme, fond, terminologie'}
 INSTRUCTIONS STRICTES :
 - Vérifie le document par rapport à CHAQUE consigne listée ci-dessus
 - Si une consigne s'applique au document, génère une correction même si l'erreur semble mineure
-- Le champ "original" doit contenir le texte EXACT tel qu'il apparaît dans le document
+- Le champ "original" doit contenir le texte EXACT tel qu'il apparaît dans le document, en incluant suffisamment de contexte (5 à 10 mots autour de l'erreur) pour que le texte soit unique dans le document
+- Ne jamais isoler juste un nom de société — toujours inclure les mots qui précèdent et suivent
+- Exemple correct : "original": "de «Adeesy SARLAU» aux côtés" (avec contexte)
+- Exemple incorrect : "original": "«Adeesy SARLAU»" (trop court, ambigu)
 - Le champ "code" doit contenir le code de la consigne appliquée (ex: F-13)
 - Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks
 

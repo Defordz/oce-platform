@@ -309,20 +309,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // ── NORMALISATION : rend les caractères spéciaux comparables ──
-  // Transforme espaces insécables, apostrophes typographiques, guillemets
-  // en leurs équivalents simples pour permettre la recherche de texte
-  const norm = s => s
-    .replace(/ /g, " ")    // espace insécable → espace
-    .replace(/ /g, " ")    // espace fine insécable → espace
-    .replace(/’/g, "'")    // apostrophe typographique ' → '
-    .replace(/‘/g, "'")    // apostrophe ouvrante ' → '
-    .replace(/“/g, '"')    // guillemet anglais ouvrant
-    .replace(/”/g, '"')    // guillemet anglais fermant
-    .replace(/«/g, "«") // garder « tel quel
-    .replace(/»/g, "»") // garder » tel quel
-    .replace(/[ 	]+/g, " ")    // espaces multiples → un seul
-    .trim();
+  // norm() avec normalisation des guillemets définie dans applyAllTrackChanges
 
   // ── APPLY TRACK CHANGES : approche document-level inverse ──
   // Traite les corrections de la FIN vers le DÉBUT du XML
@@ -352,15 +339,22 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     for (const { original, suggested } of corrections) {
       if (!original || !suggested || original === suggested) continue;
 
-      // Extraire tous les runs avec leurs positions XML
+      // Masquer les blocs track changes existants pour éviter de les re-matcher
+      const maskTC = xml => xml
+        .replace(/<w:del[ >][\s\S]*?<\/w:del>/g, m => ' '.repeat(m.length))
+        .replace(/<w:ins[ >][\s\S]*?<\/w:ins>/g, m => ' '.repeat(m.length));
+      const maskedXml = maskTC(docXml);
+
+      // Extraire les runs depuis le XML masqué (hors track changes)
       const RUN_RE = /<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>/g;
       const runs = [];
       let m;
       RUN_RE.lastIndex = 0;
-      while ((m = RUN_RE.exec(docXml)) !== null) {
+      while ((m = RUN_RE.exec(maskedXml)) !== null) {
+        if (!maskedXml.slice(m.index, m.index + 5).trim()) continue; // run masqué
         const tMatch = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
         runs.push({
-          xml: m[0],
+          xml: docXml.slice(m.index, m.index + m[0].length), // vrai XML
           text: tMatch ? tMatch[1] : "",
           xmlStart: m.index,
           xmlEnd: m.index + m[0].length,
