@@ -307,6 +307,18 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
   const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
   // Apply Track Changes across runs in a paragraph
+  // Normalise les caractères spéciaux pour la comparaison
+  const normalizeText = s => s
+    .replace(/\u00a0/g, " ")         // espace insécable → espace normal
+    .replace(/\u2019/g, "'")         // apostrophe typographique → simple
+    .replace(/\u2018/g, "'")
+    .replace(/\u201c/g, "\"")       // guillemets typographiques
+    .replace(/\u201d/g, "\"")
+    .replace(/\u00ab/g, "<<")        // guillemets français
+    .replace(/\u00bb/g, ">>")
+    .replace(/\s+/g, " ")            // espaces multiples → un seul
+    .trim();
+
   const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => {
     const RUN_RE = /(<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>)/g;
     let result = paraXml;
@@ -320,10 +332,47 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
         return t ? t[1] : "";
       });
       const combined = texts.join("");
-      const pos = combined.indexOf(original);
-      if (pos === -1) continue;
+      
+      // Essai 1 : recherche exacte
+      let pos = combined.indexOf(original);
+      
+      // Essai 2 : recherche avec normalisation (gère apostrophes, espaces insécables, etc.)
+      let searchOriginal = original;
+      if (pos === -1) {
+        const normalizedCombined = normalizeText(combined);
+        const normalizedOriginal = normalizeText(original);
+        const normalizedPos = normalizedCombined.indexOf(normalizedOriginal);
+        if (normalizedPos !== -1) {
+          // Reconstruire la position dans le texte original non normalisé
+          // en cherchant une correspondance approximative
+          const ratio = combined.length / normalizedCombined.length;
+          const approxPos = Math.floor(normalizedPos * ratio);
+          // Chercher dans une fenêtre autour de la position approximative
+          const window = 20;
+          const start = Math.max(0, approxPos - window);
+          const end = Math.min(combined.length, approxPos + normalizedOriginal.length + window);
+          const segment = combined.slice(start, end);
+          // Chercher la meilleure correspondance dans ce segment
+          const words = normalizedOriginal.split(" ").filter(w => w.length > 3);
+          if (words.length > 0 && segment.includes(words[0])) {
+            const wordPos = combined.indexOf(words[0], start);
+            if (wordPos !== -1) {
+              pos = wordPos;
+              searchOriginal = combined.slice(wordPos, wordPos + original.length);
+            }
+          }
+        }
+      }
+      
+      if (pos === -1) {
+        console.warn(`[TrackChanges] Texte non trouvé dans le document:`, JSON.stringify(original));
+        console.warn(`[TrackChanges] Texte combiné du paragraphe:`, JSON.stringify(combined.substring(0, 200)));
+        continue;
+      }
+      const originalToUse = searchOriginal;
+      console.log(`[TrackChanges] ✅ Correction appliquée: "${originalToUse}" → "${suggested}"`);
 
-      const end = pos + original.length;
+      const end = pos + originalToUse.length;
       let cum = 0, startRun = null, endRun = null;
       for (let i = 0; i < texts.length; i++) {
         const runEnd = cum + texts[i].length;
@@ -346,7 +395,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 
       const preXml = preText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>` : "";
       const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
-      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(original)}</w:delText></w:r></w:del>`;
+      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(originalToUse)}</w:delText></w:r></w:del>`;
       const insBlock = `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
       const replacement = preXml + delBlock + insBlock + postXml;
 
