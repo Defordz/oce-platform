@@ -148,11 +148,11 @@
     "id": "F-13",
     "doctype": "cp_fr",
     "category": "FORME",
-    "label": "mention du type",
-    "text": "dans le titre et dans le RÉSUMÉ NON CONFIDENTIEL DE L’OPÉRATION FOURNI PAR LES PARTIES, le nom société doit toujours etre précédé par la mention la société",
-    "examples": "incorrect : prise du controle conjoint par « XXXX » → correct : prise du controle conjoint par la société « XXXX »\nincorrect : de « XXXX » → correct : de| la société « XXXX »",
+    "label": "Mention \"la société\" avant les dénominations sociales",
+    "text": "Dans le titre du communiqué et dans le RÉSUMÉ NON CONFIDENTIEL, \ntoute dénomination sociale doit être précédée de \"la société\" \n(ou \"La société\" en début de phrase). \nNe corriger QUE l'absence du mot \"la société\" — ne pas modifier \nle reste de la phrase. \nNe pas appliquer dans les rubriques (L'acquéreur, La cible, etc.).",
+    "examples": "Incorrect : par « La Nouvelle Société Avant-Scène SA» de «Adeesy SARLAU»\nCorrect : par la société « La Nouvelle Société Avant-Scène SA» de la société «Adeesy SARLAU»\n\nIncorrect : «Adeesy SARLAU» au capital social de 100 000 dirhams\nCorrect : La société «Adeesy SARLAU» au capital social de 100 000 dirhams",
     "notes": "",
-    "version": "1.0",
+    "version": "1.1",
     "created": "13/05/2026"
   }
 ]
