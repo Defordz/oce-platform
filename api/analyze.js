@@ -83,8 +83,23 @@ Format :
     const data = await resp.json();
     const raw = data.content.map(c => c.text || '').join('');
     let parsed;
-    try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()); }
-    catch { return res.status(500).json({ error: 'JSON invalide', raw }); }
+    try {
+      // Nettoyer la réponse : supprimer backticks, markdown, texte avant/après le JSON
+      let cleaned = raw
+        .replace(/```json\s*/gi, '')
+        .replace(/```\s*/g, '')
+        .trim();
+      // Extraire le JSON si du texte l'entoure
+      const jsonStart = cleaned.indexOf('{');
+      const jsonEnd = cleaned.lastIndexOf('}');
+      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+        cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+      }
+      parsed = JSON.parse(cleaned);
+    } catch (parseErr) {
+      console.error('JSON parse error:', parseErr.message, 'Raw:', raw.substring(0, 500));
+      return res.status(500).json({ error: 'JSON invalide', detail: parseErr.message, raw: raw.substring(0, 300) });
+    }
 
     // Passer les consignes regex au frontend pour la Passe 2
     parsed.regexConsignes = withRegex;

@@ -214,12 +214,13 @@ function CorrectionPage({consignes, history, setHistory}) {
         body: JSON.stringify({ text, docType, consignes, activeOpts }),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "HTTP " + res.status }));
-        throw new Error(err.error || err.detail || "Erreur serveur");
+      const data = await res.json().catch(() => null);
+      
+      if (!res.ok || !data) {
+        throw new Error(data?.detail || data?.error || "Erreur serveur (HTTP " + res.status + ")");
       }
 
-      const parsed = await res.json();
+      const parsed = data;
 
       // Séparer corrections regex_auto et corrections manuelles
       const allCorr = parsed.corrections || [];
