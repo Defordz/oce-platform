@@ -69,7 +69,7 @@ Format :
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 4000,
+        max_tokens: 2000,
         system: systemPrompt,
         messages: [{ role: 'user', content: `Analyse:\n\n${text.substring(0, 5000)}` }],
       }),
@@ -83,46 +83,8 @@ Format :
     const data = await resp.json();
     const raw = data.content.map(c => c.text || '').join('');
     let parsed;
-    try {
-      // Nettoyer la réponse
-      let cleaned = raw
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*/g, '')
-        .trim();
-      // Extraire le JSON
-      const jsonStart = cleaned.indexOf('{');
-      const jsonEnd = cleaned.lastIndexOf('}');
-      if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
-      }
-      parsed = JSON.parse(cleaned);
-    } catch (parseErr) {
-      // Tentative de réparation du JSON tronqué
-      try {
-        let cleaned = raw
-          .replace(/```json\s*/gi, '')
-          .replace(/```\s*/g, '')
-          .trim();
-        const jsonStart = cleaned.indexOf('{');
-        if (jsonStart >= 0) {
-          cleaned = cleaned.slice(jsonStart);
-          // Trouver la dernière correction complète (se termine par })
-          const lastComplete = cleaned.lastIndexOf('}');
-          if (lastComplete > 0) {
-            cleaned = cleaned.slice(0, lastComplete + 1);
-            // Fermer les tableaux et objets ouverts
-            const openBrackets = (cleaned.match(/\[/g) || []).length - (cleaned.match(/\]/g) || []).length;
-            const openBraces = (cleaned.match(/\{/g) || []).length - (cleaned.match(/\}/g) || []).length;
-            cleaned += ']'.repeat(Math.max(0, openBrackets)) + '}'.repeat(Math.max(0, openBraces));
-            parsed = JSON.parse(cleaned);
-            console.warn('JSON repaired from truncated response');
-          }
-        }
-      } catch (repairErr) {
-        console.error('JSON parse error:', parseErr.message, 'Raw tail:', raw.slice(-200));
-        return res.status(500).json({ error: 'Réponse incomplète', detail: 'La réponse a été tronquée. Réessayez.' });
-      }
-    }
+    try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()); }
+    catch { return res.status(500).json({ error: 'JSON invalide', raw }); }
 
     // Passer les consignes regex au frontend pour la Passe 2
     parsed.regexConsignes = withRegex;
