@@ -148,9 +148,6 @@ function CorrectionPage({consignes, history, setHistory}) {
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [fileBytes, setFileBytes] = useState(null);
-  const [fileNameAr, setFileNameAr] = useState("");
-  const [fileContentAr, setFileContentAr] = useState("");
-  const [fileBytesAr, setFileBytesAr] = useState(null);
   const [opts, setOpts] = useState({forme:true, fond:true, terminologie:true, bilingue:false});
   const [phase, setPhase] = useState("idle");
   const [loadStep, setLoadStep] = useState(0);
@@ -160,7 +157,6 @@ function CorrectionPage({consignes, history, setHistory}) {
   const [statuses, setStatuses] = useState({});
   const [error, setError] = useState("");
   const fileRef = useRef();
-  const fileRefAr = useRef();
 
   const handleFile = async f => {
     setFileName(f.name);
@@ -183,24 +179,6 @@ function CorrectionPage({consignes, history, setHistory}) {
     }
   };
 
-  const handleFileAr = async f => {
-    setFileNameAr(f.name);
-    const arrayBuffer = await f.arrayBuffer();
-    setFileBytesAr(arrayBuffer);
-    try {
-      const JSZipLocal = (await import("jszip")).default;
-      const zip = await JSZipLocal.loadAsync(arrayBuffer);
-      const docXml = await zip.file("word/document.xml").async("string");
-      const textMatches = [...docXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
-      const extracted = textMatches.map(m => m[1]).join("").replace(/[ 	]+/g, " ").trim();
-      setFileContentAr(extracted);
-    } catch(e) {
-      const r = new FileReader();
-      r.onload = e2 => setFileContentAr(e2.target.result);
-      r.readAsText(f);
-    }
-  };
-
   const steps = ["Lecture du document…","Chargement des consignes…","Analyse forme et fond…","Vérification terminologique…","Génération des corrections…"];
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -213,27 +191,104 @@ function CorrectionPage({consignes, history, setHistory}) {
       await sleep(400 + Math.random() * 300);
     }
 
-    // Pour le mode bilingue, combiner les deux textes
-    const textFr = fileContent || DEMO_TEXT;
-    const textAr = fileContentAr || "";
-    const text = docType === "bilingue" && textAr
-      ? `=== VERSION FRANÇAISE ===\n${textFr}\n\n=== VERSION ARABE ===\n${textAr}`
-      : textFr;
+    const text = fileContent || DEMO_TEXT;
     const activeOpts = Object.entries(opts).filter(([,v]) => v).map(([k]) => k).join(", ");
 
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      setError("Clé API manquante. Ajoutez VITE_ANTHROPIC_API_KEY dans les variables d'environnement Vercel.");
+      setPhase("idle");
+      return;
+    }
+
+    const consignesText = consignes
+      .filter(c => c.doctype === docType || c.doctype === "bilingue" || c.doctype === "tous")
+      .map(c => `[${c.code}] ${c.label}: ${c.text.substring(0,150)}`)
+      .join("\n");
+
+    const formeInstructions = opts.forme ? `
+CORRECTIONS DE FORME (OBLIGATOIRE - cherche toutes les erreurs suivantes):
+- Fautes d'orthographe: mots mal écrits, lettres manquantes ou en trop (ex: "dsd", "pds" insérés dans les mots)
+- Mots parasites insérés dans d'autres mots (ex: "dsdmet" → "met", "pdsour" → "pour", "indstéressés" → "intéressés")
+- Erreurs de frappe évidentes
+- Problèmes de typographie (guillemets, espaces)
+- Majuscules manquantes ou incorrectes
+` : "";
+
+    const fondInstructions = opts.fond ? `
+CORRECTIONS DE FOND (OBLIGATOIRE - cherche toutes les erreurs suivantes):
+- Formulations juridiques incorrectes selon la loi n°104-12
+- Structure du document non conforme
+- Qualifications juridiques erronées (ex: "opération de projet de concentration" → "opération de concentration")
+- Références légales incorrectes
+- Incohérences dans la désignation des parties
+` : "";
+
+    const terminologieInstructions = opts.terminologie ? `
+TERMINOLOGIE (cherche les termes non conformes):
+${consignesText}
+` : "";
+
+    const prompt = `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
+Tu dois analyser le document et trouver TOUTES les erreurs présentes.
+
+Type de document: ${docType}
+
+${formeInstructions}
+${fondInstructions}
+${terminologieInstructions}
+
+DOCUMENT À CORRIGER:
+${text.substring(0, 6000)}${text.length > 6000 ? "...[tronqué]" : ""}
+
+RÈGLES IMPORTANTES:
+- Le champ "original" doit contenir EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot
+- Le champ "suggested" contient la correction
+- Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
+- Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
+- Ne pas inventer des erreurs qui n'existent pas
+
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
+{
+  "corrections": [
+    {
+      "type": "forme|fond|terminologie|bilingue",
+      "code": "F-01 ou vide si pas de consigne applicable",
+      "original": "texte exact du document avec l'erreur",
+      "suggested": "texte corrigé",
+      "reason": "explication courte"
+    }
+  ],
+  "synthese": "résumé de l'analyse en 2-3 phrases",
+  "score": 7
+}`;
+
     try {
-      const res = await fetch("/api/analyze", {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, docType, consignes, activeOpts }),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-opus-4-5",
+          max_tokens: 2000,
+          messages: [{ role: "user", content: prompt }],
+        }),
       });
+
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || `HTTP ${res.status}`);
+        throw new Error(err.error?.message || `HTTP ${res.status}`);
       }
-      const parsed = await res.json();
+
+      const data = await res.json();
+      const raw = data.content[0].text.trim().replace(/^```[\s\S]*?\n/,"").replace(/```[\s]*$/,"").trim();
+      const parsed = JSON.parse(raw);
+
       setCorrections(parsed.corrections || []);
-      setRegexConsignes(parsed.regexConsignes || []);
       setSynthese(parsed.synthese || "");
       setScore(parsed.score);
       setHistory(h => [{id:Date.now(),file:fileName||"Document démo",type:docType,corrections:(parsed.corrections||[]).length,score:parsed.score,date:new Date().toLocaleDateString("fr-FR"),data:parsed.corrections,synthese:parsed.synthese},...h]);
@@ -242,8 +297,7 @@ function CorrectionPage({consignes, history, setHistory}) {
       setPhase("idle");
       return;
     }
-
-        setPhase("results");
+    setPhase("results");
   };
 
   const setStatus = (i, s) => setStatuses(p => ({...p, [i]: s}));
@@ -306,12 +360,10 @@ function CorrectionPage({consignes, history, setHistory}) {
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
     if (!accepted.length) { alert("Aucune correction à télécharger."); return; }
-    // En mode bilingue, utiliser le fichier FR comme base pour les corrections Word
-    const bytesToUse = fileBytes || fileBytesAr;
-    if (!bytesToUse) { alert("Veuillez uploader au moins un fichier .docx pour utiliser cette fonctionnalité."); return; }
+    if (!fileBytes) { alert("Veuillez uploader un fichier .docx pour utiliser cette fonctionnalité."); return; }
 
     try {
-      const zip = await JSZip.loadAsync(bytesToUse);
+      const zip = await JSZip.loadAsync(fileBytes);
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
       const changeId = [100];
@@ -353,55 +405,18 @@ function CorrectionPage({consignes, history, setHistory}) {
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <Card>
             <SLabel>Document à corriger</SLabel>
-            {docType === "bilingue" ? (
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                {/* Zone FR */}
-                <div>
-                  <div style={{fontSize:9.5,fontWeight:600,color:C.navy,textTransform:"uppercase",letterSpacing:".05em",marginBottom:5}}>Version FR</div>
-                  <div
-                    onClick={() => fileRef.current.click()}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-                    style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?"#edf2ff":C.cream2,borderRadius:8,padding:"16px 12px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
-                  >
-                    <div style={{fontSize:22,marginBottom:5}}>📄</div>
-                    <div style={{fontSize:11.5,fontWeight:500,color:C.text}}>{fileName || "Fichier FR"}</div>
-                    <div style={{fontSize:10,color:C.text3,marginTop:2}}>.docx français</div>
-                  </div>
-                  <input ref={fileRef} type="file" accept=".docx,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
-                </div>
-                {/* Zone AR */}
-                <div>
-                  <div style={{fontSize:9.5,fontWeight:600,color:C.navy,textTransform:"uppercase",letterSpacing:".05em",marginBottom:5,direction:"rtl"}}>النسخة العربية</div>
-                  <div
-                    onClick={() => fileRefAr.current.click()}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); handleFileAr(e.dataTransfer.files[0]); }}
-                    style={{border:`1.5px dashed ${fileNameAr?C.navy2:C.border2}`,background:fileNameAr?"#edf2ff":C.cream2,borderRadius:8,padding:"16px 12px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
-                  >
-                    <div style={{fontSize:22,marginBottom:5}}>📄</div>
-                    <div style={{fontSize:11.5,fontWeight:500,color:C.text}}>{fileNameAr || "Fichier AR"}</div>
-                    <div style={{fontSize:10,color:C.text3,marginTop:2}}>.docx عربي</div>
-                  </div>
-                  <input ref={fileRefAr} type="file" accept=".docx,.txt" style={{display:"none"}} onChange={e => handleFileAr(e.target.files[0])} />
-                </div>
-              </div>
-            ) : (
-              <>
-                <div
-                  onClick={() => fileRef.current.click()}
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-                  style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?"#edf2ff":C.cream2,borderRadius:8,padding:"22px 16px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
-                >
-                  <div style={{fontSize:26,marginBottom:7}}>📄</div>
-                  <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{fileName || "Déposer le fichier ici"}</div>
-                  <div style={{fontSize:11,color:C.text3,marginTop:3}}>Word (.docx) — FR ou AR</div>
-                  {!fileName && <div style={{fontSize:10.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
-                </div>
-                <input ref={fileRef} type="file" accept=".docx,.pdf,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
-              </>
-            )}
+            <div
+              onClick={() => fileRef.current.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+              style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?"#edf2ff":C.cream2,borderRadius:8,padding:"22px 16px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+            >
+              <div style={{fontSize:26,marginBottom:7}}>📄</div>
+              <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{fileName || "Déposer le fichier ici"}</div>
+              <div style={{fontSize:11,color:C.text3,marginTop:3}}>Word (.docx) ou PDF — FR ou AR</div>
+              {!fileName && <div style={{fontSize:10.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
+            </div>
+            <input ref={fileRef} type="file" accept=".docx,.pdf,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
           </Card>
 
           <Card>
