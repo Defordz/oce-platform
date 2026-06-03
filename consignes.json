@@ -342,5 +342,30 @@
     "id": "F-15",
     "version": "1.0",
     "created": "13/05/2026"
+  },
+  {
+    "code": "F-16",
+    "doctype": "cp_fr",
+    "category": "FORME",
+    "label": "Majuscule initiale des noms d'entreprises",
+    "text": "Tous les noms d'entreprises (sociétés, groupes) doivent commencer par une majuscule. Cette règle s'applique aux raisons sociales complètes et aux noms commerciaux, qu'ils soient précédés ou non de leur forme juridique (SA, SARL, SAS, etc.).",
+    "examples": "société générale → Société Générale\nbanque populaire → Banque Populaire\ngroupe attijariwafa bank → Groupe Attijariwafa Bank\nmaroc telecom → Maroc Telecom",
+    "regex": [
+      {
+        "find": "\\b([a-zà-ÿ])([a-zà-ÿ]+)\\s+([A-ZÀ-Ÿ][a-zà-ÿ]+)(?=\\s+(SA|SARL|SAS|Group[e]?|Bank|Holding))",
+        "replace": "$1$2 $3",
+        "flags": "g",
+        "label": "Correction majuscule initiale noms composés avant forme juridique"
+      },
+      {
+        "find": "\\b(société|groupe|banque|compagnie)\\s+([a-z])",
+        "replace": "$1 $2",
+        "flags": "gi",
+        "label": "Correction après mots génériques (société, groupe, etc.)"
+      }
+    ],
+    "id": "F-16",
+    "version": "1.0",
+    "created": "15/05/2026"
   }
 ]
