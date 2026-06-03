@@ -2,22 +2,16 @@ import { useState, useRef } from "react";
 import JSZip from "jszip";
 
 // ── PALETTE ──
-// ── Palette officielle Conseil de la Concurrence du Maroc ──
 const C = {
-  // Verts institutionnels (extraits du motif officiel du site)
-  navy:"#1A3D29",   navy2:"#22432F",
-  // Fonds crème chaud
-  cream:"#F9F7F5", cream2:"#F2EEEA", cream3:"#E8E2DC",
-  // Accent or (lignes du motif officiel)
-  gold:"#C9A84C",
-  // Statuts
-  green:"#1A3D29", greenLight:"#e8f5ec",
-  red:"#8B1A1A",   redLight:"#fdf0f0",
+  navy:"#0f2650", navy2:"#1a3a6e",
+  cream:"#f8f6f0", cream2:"#f0ede4", cream3:"#e8e3d8",
+  gold:"#b8962e",
+  green:"#1a5c2a", greenLight:"#e8f5ec",
+  red:"#8b1a1a", redLight:"#fdf0f0",
   amber:"#7a4a00", amberLight:"#fdf5e0",
-  purple:"#4a1a6e",purpleLight:"#f0e8f8",
-  // Textes
-  text:"#1A1A2E", text2:"#4a4a6a", text3:"#8a8aaa",
-  border:"#D9D2CA", border2:"#C8BFB5",
+  purple:"#4a1a6e", purpleLight:"#f0e8f8",
+  text:"#1a1a2e", text2:"#4a4a6a", text3:"#8a8aaa",
+  border:"#d8d3c8", border2:"#c8c3b8",
 };
 
 const CONSIGNES_2025 = [
@@ -92,24 +86,18 @@ function Badge({t, small}) {
 
 function Sidebar({page, setPage}) {
   const item = (id, icon, label) => (
-    <div onClick={() => setPage(id)} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 14px",cursor:"pointer",borderRadius:6,margin:"1px 7px",background:page===id?"rgba(255,255,255,.1)":"transparent",color:page===id?"#fff":"rgba(255,255,255,.55)",borderLeft:page===id?"3px solid "+C.gold:"3px solid transparent",paddingLeft:page===id?"11px":"14px",fontSize:12.5,fontWeight:page===id?500:400,transition:"all .15s"}}>
+    <div onClick={() => setPage(id)} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 14px",cursor:"pointer",borderRadius:6,margin:"1px 7px",background:page===id?"rgba(255,255,255,.13)":"transparent",color:page===id?"#fff":"rgba(255,255,255,.58)",fontSize:12.5,fontWeight:page===id?500:400,transition:"all .15s"}}>
       <span style={{fontSize:14,opacity:page===id?1:.7}}>{icon}</span>{label}
     </div>
   );
   return (
-    <aside style={{width:220,background:C.navy,display:"flex",flexDirection:"column",flexShrink:0,minHeight:"100vh",boxShadow:"2px 0 8px rgba(0,0,0,.15)"}}>
-      <div style={{height:4,background:C.gold,flexShrink:0}}/>
-      <div style={{padding:"16px 14px 14px",borderBottom:"1px solid rgba(255,255,255,.15)",background:"#fff"}}>
-        <img
-          src="https://conseil-concurrence.ma/wp-content/uploads/2022/09/Logo-CC-site.png"
-          alt="Conseil de la Concurrence"
-          style={{width:"100%",maxHeight:52,objectFit:"contain",objectPosition:"left"}}
-          onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="block";}}
-        />
-        <div style={{display:"none",fontFamily:"Georgia,serif",fontSize:12,color:C.navy,fontWeight:700,lineHeight:1.3}}>Conseil de la<br/>Concurrence</div>
-      </div>
-      <div style={{padding:"8px 14px 10px",background:C.navy,borderBottom:"1px solid rgba(255,255,255,.1)"}}>
-        <div style={{fontSize:9,color:"rgba(255,255,255,.6)",letterSpacing:".1em",textTransform:"uppercase",fontWeight:500}}>Plateforme de Correction OCE</div>
+    <aside style={{width:210,background:C.navy,display:"flex",flexDirection:"column",flexShrink:0,minHeight:"100vh"}}>
+      <div style={{padding:"22px 18px 14px",borderBottom:"1px solid rgba(255,255,255,.1)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:9}}>
+          <div style={{width:28,height:28,background:"rgba(255,255,255,.15)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>⚖️</div>
+          <div style={{fontFamily:"Georgia,serif",fontSize:12.5,color:"#fff",lineHeight:1.3,fontWeight:600}}>Conseil de la<br/>Concurrence</div>
+        </div>
+        <div style={{fontSize:9,color:"rgba(255,255,255,.32)",letterSpacing:".1em",textTransform:"uppercase"}}>Correction OCE v1.0</div>
       </div>
       <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Rapporteur</div>
       {item("correction","📝","Corriger un document")}
@@ -121,7 +109,7 @@ function Sidebar({page, setPage}) {
       {item("utilisateurs","👥","Utilisateurs")}
       <div style={{marginTop:"auto",padding:14,borderTop:"1px solid rgba(255,255,255,.08)"}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
-          <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(255,255,255,.2)",border:"1px solid rgba(255,255,255,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#fff",letterSpacing:".05em"}}>RA</div>
+          <div style={{width:28,height:28,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,color:"#fff"}}>RA</div>
           <div>
             <div style={{fontSize:11.5,color:"rgba(255,255,255,.7)"}}>Rapporteur</div>
             <div style={{fontSize:9.5,color:"rgba(255,255,255,.33)"}}>Concentrations éco.</div>
@@ -134,10 +122,10 @@ function Sidebar({page, setPage}) {
 
 function PageHeader({title, sub, right}) {
   return (
-    <div style={{padding:"20px 30px 14px",background:"#fff",flexShrink:0,borderBottom:`2px solid ${C.navy}`}}>
+    <div style={{padding:"22px 30px 16px",borderBottom:`1px solid ${C.border}`,background:C.cream,flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <h1 style={{fontFamily:"Georgia,serif",fontSize:21,fontWeight:700,color:C.navy,margin:0,letterSpacing:"-.01em" }}>{title}</h1>
+          <h1 style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:600,color:C.navy,margin:0}}>{title}</h1>
           {sub && <p style={{fontSize:12.5,color:C.text2,marginTop:3,margin:"3px 0 0"}}>{sub}</p>}
         </div>
         {right}
@@ -147,7 +135,7 @@ function PageHeader({title, sub, right}) {
 }
 
 function Card({children, style}) {
-  return <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:4,padding:"16px 20px",boxShadow:"0 1px 3px rgba(0,0,0,.06)",...style}}>{children}</div>;
+  return <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"16px 20px",...style}}>{children}</div>;
 }
 
 function SLabel({children}) {
@@ -160,16 +148,19 @@ function CorrectionPage({consignes, history, setHistory}) {
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [fileBytes, setFileBytes] = useState(null);
+  const [fileNameAr, setFileNameAr] = useState("");
+  const [fileContentAr, setFileContentAr] = useState("");
+  const [fileBytesAr, setFileBytesAr] = useState(null);
   const [opts, setOpts] = useState({forme:true, fond:true, terminologie:true, bilingue:false});
   const [phase, setPhase] = useState("idle");
   const [loadStep, setLoadStep] = useState(0);
   const [corrections, setCorrections] = useState([]);
   const [synthese, setSynthese] = useState("");
   const [score, setScore] = useState(null);
-  const [regexConsignes, setRegexConsignes] = useState([]);
   const [statuses, setStatuses] = useState({});
   const [error, setError] = useState("");
   const fileRef = useRef();
+  const fileRefAr = useRef();
 
   const handleFile = async f => {
     setFileName(f.name);
@@ -192,6 +183,24 @@ function CorrectionPage({consignes, history, setHistory}) {
     }
   };
 
+  const handleFileAr = async f => {
+    setFileNameAr(f.name);
+    const arrayBuffer = await f.arrayBuffer();
+    setFileBytesAr(arrayBuffer);
+    try {
+      const JSZipLocal = (await import("jszip")).default;
+      const zip = await JSZipLocal.loadAsync(arrayBuffer);
+      const docXml = await zip.file("word/document.xml").async("string");
+      const textMatches = [...docXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
+      const extracted = textMatches.map(m => m[1]).join("").replace(/[ 	]+/g, " ").trim();
+      setFileContentAr(extracted);
+    } catch(e) {
+      const r = new FileReader();
+      r.onload = e2 => setFileContentAr(e2.target.result);
+      r.readAsText(f);
+    }
+  };
+
   const steps = ["Lecture du document…","Chargement des consignes…","Analyse forme et fond…","Vérification terminologique…","Génération des corrections…"];
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -204,106 +213,26 @@ function CorrectionPage({consignes, history, setHistory}) {
       await sleep(400 + Math.random() * 300);
     }
 
-    const text = fileContent || DEMO_TEXT;
+    // Pour le mode bilingue, combiner les deux textes
+    const textFr = fileContent || DEMO_TEXT;
+    const textAr = fileContentAr || "";
+    const text = docType === "bilingue" && textAr
+      ? `=== VERSION FRANÇAISE ===\n${textFr}\n\n=== VERSION ARABE ===\n${textAr}`
+      : textFr;
     const activeOpts = Object.entries(opts).filter(([,v]) => v).map(([k]) => k).join(", ");
 
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      setError("Clé API manquante. Ajoutez VITE_ANTHROPIC_API_KEY dans les variables d'environnement Vercel.");
-      setPhase("idle");
-      return;
-    }
-
-    const consignesText = consignes
-      .filter(c => c.doctype === docType || c.doctype === "bilingue" || c.doctype === "tous")
-      .map(c => `[${c.code}] ${c.label}: ${c.text.substring(0,150)}`)
-      .join("\n");
-
-    const formeInstructions = opts.forme ? `
-CORRECTIONS DE FORME (OBLIGATOIRE - cherche toutes les erreurs suivantes):
-- Fautes d'orthographe: mots mal écrits, lettres manquantes ou en trop (ex: "dsd", "pds" insérés dans les mots)
-- Mots parasites insérés dans d'autres mots (ex: "dsdmet" → "met", "pdsour" → "pour", "indstéressés" → "intéressés")
-- Erreurs de frappe évidentes
-- Problèmes de typographie (guillemets, espaces)
-- Majuscules manquantes ou incorrectes
-` : "";
-
-    const fondInstructions = opts.fond ? `
-CORRECTIONS DE FOND (OBLIGATOIRE - cherche toutes les erreurs suivantes):
-- Formulations juridiques incorrectes selon la loi n°104-12
-- Structure du document non conforme
-- Qualifications juridiques erronées (ex: "opération de projet de concentration" → "opération de concentration")
-- Références légales incorrectes
-- Incohérences dans la désignation des parties
-` : "";
-
-    const terminologieInstructions = opts.terminologie ? `
-TERMINOLOGIE (cherche les termes non conformes):
-${consignesText}
-` : "";
-
-    const prompt = `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
-Tu dois analyser le document et trouver TOUTES les erreurs présentes.
-
-Type de document: ${docType}
-
-${formeInstructions}
-${fondInstructions}
-${terminologieInstructions}
-
-DOCUMENT À CORRIGER:
-${text.substring(0, 6000)}${text.length > 6000 ? "...[tronqué]" : ""}
-
-RÈGLES IMPORTANTES:
-- Le champ "original" doit contenir EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot
-- Le champ "suggested" contient la correction
-- Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
-- Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
-- Ne pas inventer des erreurs qui n'existent pas
-
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
-{
-  "corrections": [
-    {
-      "type": "forme|fond|terminologie|bilingue",
-      "code": "F-01 ou vide si pas de consigne applicable",
-      "original": "texte exact du document avec l'erreur",
-      "suggested": "texte corrigé",
-      "reason": "explication courte"
-    }
-  ],
-  "synthese": "résumé de l'analyse en 2-3 phrases",
-  "score": 7
-}`;
-
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-5",
-          max_tokens: 2000,
-          messages: [{ role: "user", content: prompt }],
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, docType, consignes, activeOpts }),
       });
-
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error?.message || `HTTP ${res.status}`);
+        throw new Error(err.error || `HTTP ${res.status}`);
       }
-
-      const data = await res.json();
-      const raw = data.content[0].text.trim().replace(/^```[\s\S]*?\n/,"").replace(/```[\s]*$/,"").trim();
-      const parsed = JSON.parse(raw);
-
-      // Séparer corrections regex_auto et corrections manuelles
-      const allCorr = parsed.corrections || [];
-      setCorrections(allCorr);
+      const parsed = await res.json();
+      setCorrections(parsed.corrections || []);
       setRegexConsignes(parsed.regexConsignes || []);
       setSynthese(parsed.synthese || "");
       setScore(parsed.score);
@@ -313,319 +242,85 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       setPhase("idle");
       return;
     }
-    setPhase("results");
+
+        setPhase("results");
   };
 
   const setStatus = (i, s) => setStatuses(p => ({...p, [i]: s}));
   const acceptAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "accepted"); setStatuses(m); };
   const rejectAll = () => { const m = {}; corrections.forEach((_, i) => m[i] = "rejected"); setStatuses(m); };
 
-  const escXml = s => s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
-
-  // ── PASSE 2 : Application des corrections regex sur le XML Word ──
-  // Chaque consigne avec regex est appliquée directement sur le texte des runs
-  // puis encapsulée en w:del/w:ins pour le mode suivi des modifications
-  const applyRegexCorrections = (docXml, regexConsignes, date) => {
-    if (!regexConsignes || regexConsignes.length === 0) return { xml: docXml, applied: [] };
-
-    let changeId = 100;
-    const applied = [];
-    let result = docXml;
-
-    // Extraire les runs du XML (hors track changes existants)
-    const maskTC = xml => xml
-      .replace(/<w:del[ >][\s\S]*?<\/w:del>/g, m => ' '.repeat(m.length))
-      .replace(/<w:ins[ >][\s\S]*?<\/w:ins>/g, m => ' '.repeat(m.length));
-
-    const RUN_RE = /<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>/g;
-
-    for (const consigne of regexConsignes) {
-      const patterns = Array.isArray(consigne.regex) ? consigne.regex : [consigne.regex];
-
-      for (const pat of patterns) {
-        if (!pat || !pat.find) continue;
-
-        try {
-          const flags = (pat.flags || 'g').includes('g') ? pat.flags : pat.flags + 'g';
-          const regex = new RegExp(pat.find, flags);
-
-          // Travailler sur le XML masqué pour trouver les positions
-          const masked = maskTC(result);
-
-          // Extraire tous les runs avec leurs positions
-          const runs = [];
-          let m;
-          const runRe = new RegExp(RUN_RE.source, 'g');
-          runRe.lastIndex = 0;
-          while ((m = runRe.exec(masked)) !== null) {
-            if (!masked.slice(m.index, m.index + 5).trim()) continue;
-            const tMatch = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-            if (tMatch && tMatch[1]) {
-              runs.push({
-                text: tMatch[1],
-                xmlStart: m.index,
-                xmlEnd: m.index + m[0].length,
-                xml: result.slice(m.index, m.index + m[0].length),
-              });
-            }
-          }
-
-          if (runs.length === 0) continue;
-
-          // Texte concaténé de tous les runs
-          const fullText = runs.map(r => r.text).join('');
-
-          // Trouver toutes les correspondances dans le texte concaténé
-          const matches = [];
-          let match;
-          regex.lastIndex = 0;
-          while ((match = regex.exec(fullText)) !== null) {
-            matches.push({ index: match.index, end: match.index + match[0].length, match });
-            if (!flags.includes('g')) break;
-          }
-
-          if (matches.length === 0) continue;
-
-          // Pour chaque match, trouver les runs couverts et appliquer
-          // Trier en ordre inverse pour ne pas invalider les positions
-          matches.reverse();
-
-          for (const { index: matchStart, end: matchEnd, match: matchObj } of matches) {
-            // Trouver les runs qui couvrent ce match
-            let cum = 0;
-            let sIdx = null, eIdx = null;
-            for (let i = 0; i < runs.length; i++) {
-              const runEnd = cum + runs[i].text.length;
-              if (sIdx === null && runEnd > matchStart) sIdx = i;
-              if (eIdx === null && runEnd >= matchEnd) { eIdx = i; break; }
-              cum += runs[i].text.length;
-            }
-
-            if (sIdx === null || eIdx === null) continue;
-
-            // Calculer le texte original et corrigé
-            const spanStart = runs.slice(0, sIdx).reduce((s, r) => s + r.text.length, 0);
-            const spanEnd   = runs.slice(0, eIdx + 1).reduce((s, r) => s + r.text.length, 0);
-            const originalText = fullText.slice(matchStart, matchEnd);
-
-            // Appliquer le remplacement regex
-            const correctedText = originalText.replace(new RegExp(pat.find, flags.replace('g','')), pat.replace);
-
-            if (originalText === correctedText) continue;
-
-            const preText  = fullText.slice(spanStart, matchStart);
-            const postText = fullText.slice(matchEnd, spanEnd);
-
-            // Récupérer la mise en forme du premier run
-            const rprMatch = runs[sIdx].xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
-            const rpr = rprMatch ? rprMatch[0] : '';
-
-            // Construire le XML de remplacement avec track changes
-            const preXml  = preText  ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>`  : '';
-            const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : '';
-            const delXml  = `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(originalText)}</w:delText></w:r></w:del>`;
-            const insXml  = `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(correctedText)}</w:t></w:r></w:ins>`;
-            const replacement = preXml + delXml + insXml + postXml;
-
-            // Appliquer dans le XML réel
-            const xmlStart = runs[sIdx].xmlStart;
-            const xmlEnd   = runs[eIdx].xmlEnd;
-            result = result.slice(0, xmlStart) + replacement + result.slice(xmlEnd);
-
-            applied.push({
-              code: consigne.code,
-              type: 'regex_auto',
-              original: originalText,
-              suggested: correctedText,
-              reason: pat.label || consigne.label,
-            });
-
-            // Recalculer les runs après modification
-            break; // Recalculer au prochain passage
-          }
-        } catch (e) {
-          console.warn(`[REGEX] Erreur pour ${consigne.code}:`, e.message);
-        }
-      }
-    }
-
-    return { xml: result, applied };
-  };
-
-  // norm() avec normalisation des guillemets définie dans applyAllTrackChanges
-
-  // ── APPLY TRACK CHANGES : approche document-level inverse ──
-  // Traite les corrections de la FIN vers le DÉBUT du XML
-  // pour éviter que chaque remplacement invalide les positions suivantes
-  const applyAllTrackChanges = (docXml, corrections, date) => {
-    let changeId = 200;
-
-    // Normalise pour la recherche (espaces insécables, apostrophes, guillemets, etc.)
-    const norm = s => s
-      .replace(/\u00A0/g, " ")   // espace insécable
-      .replace(/\u202F/g, " ")   // espace fine insécable
-      .replace(/\u2019/g, "'")  // apostrophe typographique
-      .replace(/\u2018/g, "'")  // apostrophe ouvrante
-      .replace(/\u201C/g, '"')  // guillemet double ouvrant
-      .replace(/\u201D/g, '"')  // guillemet double fermant
-      .replace(/\u00AB/g, "<<") // « guillemet français ouvrant
-      .replace(/\u00BB/g, ">>") // » guillemet français fermant
-      .replace(/ /g, " ")
-      .replace(/ /g, " ")
-      .replace(/[ \t]+/g, " ")
-      .trim();
-
-    // Pour chaque correction, trouver sa position dans le XML
-    // puis trier par position décroissante avant d'appliquer
-    const toApply = [];
+  // Apply Track Changes across runs in a paragraph
+  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => {
+    const RUN_RE = /(<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>)/g;
+    let result = paraXml;
 
     for (const { original, suggested } of corrections) {
-      if (!original || !suggested || original === suggested) continue;
+      const runMatches = [...result.matchAll(RUN_RE)];
+      if (!runMatches.length) continue;
 
-      // Masquer les blocs track changes existants pour éviter de les re-matcher
-      const maskTC = xml => xml
-        .replace(/<w:del[ >][\s\S]*?<\/w:del>/g, m => ' '.repeat(m.length))
-        .replace(/<w:ins[ >][\s\S]*?<\/w:ins>/g, m => ' '.repeat(m.length));
-      const maskedXml = maskTC(docXml);
+      const texts = runMatches.map(m => {
+        const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+        return t ? t[1] : "";
+      });
+      const combined = texts.join("");
+      const pos = combined.indexOf(original);
+      if (pos === -1) continue;
 
-      // Extraire les runs depuis le XML masqué (hors track changes)
-      const RUN_RE = /<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>/g;
-      const runs = [];
-      let m;
-      RUN_RE.lastIndex = 0;
-      while ((m = RUN_RE.exec(maskedXml)) !== null) {
-        if (!maskedXml.slice(m.index, m.index + 5).trim()) continue; // run masqué
-        const tMatch = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-        runs.push({
-          xml: docXml.slice(m.index, m.index + m[0].length), // vrai XML
-          text: tMatch ? tMatch[1] : "",
-          xmlStart: m.index,
-          xmlEnd: m.index + m[0].length,
-        });
+      const end = pos + original.length;
+      let cum = 0, startRun = null, endRun = null;
+      for (let i = 0; i < texts.length; i++) {
+        const runEnd = cum + texts[i].length;
+        if (startRun === null && runEnd > pos) startRun = i;
+        if (runEnd >= end) { endRun = i; break; }
+        cum += texts[i].length;
       }
+      if (startRun === null || endRun === null) continue;
 
-      // Texte complet du document (raw + normalisé)
-      const rawFull = runs.map(r => r.text).join("");
-      const normFull = norm(rawFull);
-      const normOrig = norm(original);
-
-      const normPos = normFull.indexOf(normOrig);
-      if (normPos === -1) {
-        console.warn("[TC] Non trouvé:", JSON.stringify(original.substring(0, 50)));
-        continue;
-      }
-
-      // Mapper position normalisée → position raw caractère par caractère
-      let rawPos = 0, nPos = 0;
-      while (nPos < normPos && rawPos < rawFull.length) {
-        const ch = rawFull[rawPos];
-        const nch = norm(ch) || " ";
-        nPos += nch.length;
-        rawPos++;
-      }
-      const rawStart = rawPos;
-      const rawEnd = rawStart + original.length;
-
-      // Identifier les runs couverts — aligner sur frontières de runs
-      let cum = 0;
-      let startRunIdx = null, endRunIdx = null;
-      for (let i = 0; i < runs.length; i++) {
-        const runEnd = cum + runs[i].text.length;
-        if (startRunIdx === null && runEnd > rawStart) startRunIdx = i;
-        if (endRunIdx === null && runEnd >= rawEnd) { endRunIdx = i; break; }
-        cum += runs[i].text.length;
-      }
-
-      if (startRunIdx === null || endRunIdx === null) {
-        console.warn("[TC] Runs non trouvés:", JSON.stringify(original.substring(0, 50)));
-        continue;
-      }
-
-      // Récupérer la mise en forme du premier run
-      const rprMatch = runs[startRunIdx].xml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+      // Get formatting from first run
+      const firstRunXml = runMatches[startRun][0];
+      const rprMatch = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
       const rpr = rprMatch ? rprMatch[0] : "";
 
-      // Aligner sur frontières exactes de runs (pas de preText/postText partiels)
-      // On prend l'ensemble des runs couverts et on remplace tout le bloc
-      const spanStart = runs.slice(0, startRunIdx).reduce((s, r) => s + r.text.length, 0);
-      const spanEnd = runs.slice(0, endRunIdx + 1).reduce((s, r) => s + r.text.length, 0);
+      // Text before/after match within the spanned runs
+      const spanStart = texts.slice(0, startRun).join("").length;
+      const spanEnd = texts.slice(0, endRun + 1).join("").length;
+      const preText = combined.slice(spanStart, pos);
+      const postText = combined.slice(end, spanEnd);
 
-      // Si la correspondance est partielle dans un run, étendre aux frontières du run
-      // Cela évite de couper un run en plein milieu dans le XML
-      const alignedStart = spanStart; // début du premier run couvert
-      const alignedEnd = spanEnd;     // fin du dernier run couvert
-
-      const preText = rawFull.slice(alignedStart, rawStart);
-      const postText = rawFull.slice(rawEnd, alignedEnd);
-      const actualOriginal = rawFull.slice(rawStart, rawEnd);
-
-      // Position dans le XML (pour tri inverse)
-      const xmlStart = runs[startRunIdx].xmlStart;
-      const xmlEnd = runs[endRunIdx].xmlEnd;
-
-      toApply.push({ xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr });
-      console.log(`[TC] ✅ Trouvé: "${actualOriginal.substring(0, 40)}" → "${suggested.substring(0, 40)}"`);
-    }
-
-    // Filtrer les corrections qui se chevauchent (garder la première par position)
-    toApply.sort((a, b) => a.xmlStart - b.xmlStart);
-    const filtered = [];
-    let lastEnd = -1;
-    for (const item of toApply) {
-      if (item.xmlStart >= lastEnd) {
-        filtered.push(item);
-        lastEnd = item.xmlEnd;
-      } else {
-        console.warn("[TC] Chevauchement ignoré:", item.actualOriginal?.substring(0, 30));
-      }
-    }
-
-    // Appliquer dans l'ordre croissant en ajustant l'offset cumulé
-    let result = docXml;
-    let offset = 0; // décalage cumulé dû aux remplacements précédents
-    for (const { xmlStart, xmlEnd, preText, postText, actualOriginal, suggested, rpr } of filtered) {
-      const adjStart = xmlStart + offset;
-      const adjEnd   = xmlEnd   + offset;
-      const preXml  = preText  ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>`  : "";
+      const preXml = preText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>` : "";
       const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
-      const delXml  = `<w:del w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(actualOriginal)}</w:delText></w:r></w:del>`;
-      const insXml  = `<w:ins w:id="${changeId++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
-      const replacement = preXml + delXml + insXml + postXml;
-      result = result.slice(0, adjStart) + replacement + result.slice(adjEnd);
-      offset += replacement.length - (xmlEnd - xmlStart);
-    }
+      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(original)}</w:delText></w:r></w:del>`;
+      const insBlock = `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
+      const replacement = preXml + delBlock + insBlock + postXml;
 
+      const firstStart = runMatches[startRun].index;
+      const lastEnd = runMatches[endRun].index + runMatches[endRun][0].length;
+      result = result.slice(0, firstStart) + replacement + result.slice(lastEnd);
+    }
     return result;
   };
-
-  // eslint-disable-next-line no-unused-vars
-  const applyTrackChangesToPara = (paraXml) => paraXml;
 
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
     if (!accepted.length) { alert("Aucune correction à télécharger."); return; }
-    if (!fileBytes) { alert("Veuillez uploader un fichier .docx pour utiliser cette fonctionnalité."); return; }
+    // En mode bilingue, utiliser le fichier FR comme base pour les corrections Word
+    const bytesToUse = fileBytes || fileBytesAr;
+    if (!bytesToUse) { alert("Veuillez uploader au moins un fichier .docx pour utiliser cette fonctionnalité."); return; }
 
     try {
-      const zip = await JSZip.loadAsync(fileBytes);
+      const zip = await JSZip.loadAsync(bytesToUse);
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
+      const changeId = [100];
 
-      // PASSE 2A — Appliquer les corrections regex (déterministes)
-      const regexResult = applyRegexCorrections(docXml, regexConsignes, date);
-      let currentXml = regexResult.xml;
-
-      // PASSE 2B — Appliquer les corrections manuelles (Claude text-match)
-      const manualCorrections = accepted
-        .filter(c => c.type !== "regex_auto" && c.original && c.suggested);
-      const result = applyAllTrackChanges(currentXml, manualCorrections, date);
-
-      console.log("[Passe 2A] Regex appliquées:", regexResult.applied.length);
-      console.log("[Passe 2B] Manuelles appliquées:", manualCorrections.length);
+      // Process paragraph by paragraph
+      const correctionsList = accepted.map(c => ({ original: c.original, suggested: c.suggested }));
+      const result = docXml.replace(/(<w:p[ >][\s\S]*?<\/w:p>)/g, (para) =>
+        applyTrackChangesToPara(para, correctionsList, changeId, date)
+      );
 
       zip.file("word/document.xml", result);
       const blob = await zip.generateAsync({
@@ -647,8 +342,8 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
         title="Corriger un document"
-        sub="Upload · Analyse automatique · Téléchargement Word avec suivi des modifications"
-        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>Fiche de consignes active</span>}
+        sub="Upload · Analyse Claude · Téléchargement Word avec suivi des modifications"
+        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>Fiche v1.0 active</span>}
       />
 
       {error && <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf0f0",border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12.5,color:C.red}}>{error}</div>}
@@ -658,18 +353,55 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <Card>
             <SLabel>Document à corriger</SLabel>
-            <div
-              onClick={() => fileRef.current.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-              style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?"#edf2ff":C.cream2,borderRadius:8,padding:"22px 16px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
-            >
-              <div style={{fontSize:26,marginBottom:7}}>📄</div>
-              <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{fileName || "Déposer le fichier ici"}</div>
-              <div style={{fontSize:11,color:C.text3,marginTop:3}}>Word (.docx) ou PDF — FR ou AR</div>
-              {!fileName && <div style={{fontSize:10.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
-            </div>
-            <input ref={fileRef} type="file" accept=".docx,.pdf,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
+            {docType === "bilingue" ? (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {/* Zone FR */}
+                <div>
+                  <div style={{fontSize:9.5,fontWeight:600,color:C.navy,textTransform:"uppercase",letterSpacing:".05em",marginBottom:5}}>Version FR</div>
+                  <div
+                    onClick={() => fileRef.current.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+                    style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?"#edf2ff":C.cream2,borderRadius:8,padding:"16px 12px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+                  >
+                    <div style={{fontSize:22,marginBottom:5}}>📄</div>
+                    <div style={{fontSize:11.5,fontWeight:500,color:C.text}}>{fileName || "Fichier FR"}</div>
+                    <div style={{fontSize:10,color:C.text3,marginTop:2}}>.docx français</div>
+                  </div>
+                  <input ref={fileRef} type="file" accept=".docx,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
+                </div>
+                {/* Zone AR */}
+                <div>
+                  <div style={{fontSize:9.5,fontWeight:600,color:C.navy,textTransform:"uppercase",letterSpacing:".05em",marginBottom:5,direction:"rtl"}}>النسخة العربية</div>
+                  <div
+                    onClick={() => fileRefAr.current.click()}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); handleFileAr(e.dataTransfer.files[0]); }}
+                    style={{border:`1.5px dashed ${fileNameAr?C.navy2:C.border2}`,background:fileNameAr?"#edf2ff":C.cream2,borderRadius:8,padding:"16px 12px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+                  >
+                    <div style={{fontSize:22,marginBottom:5}}>📄</div>
+                    <div style={{fontSize:11.5,fontWeight:500,color:C.text}}>{fileNameAr || "Fichier AR"}</div>
+                    <div style={{fontSize:10,color:C.text3,marginTop:2}}>.docx عربي</div>
+                  </div>
+                  <input ref={fileRefAr} type="file" accept=".docx,.txt" style={{display:"none"}} onChange={e => handleFileAr(e.target.files[0])} />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div
+                  onClick={() => fileRef.current.click()}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+                  style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?"#edf2ff":C.cream2,borderRadius:8,padding:"22px 16px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+                >
+                  <div style={{fontSize:26,marginBottom:7}}>📄</div>
+                  <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{fileName || "Déposer le fichier ici"}</div>
+                  <div style={{fontSize:11,color:C.text3,marginTop:3}}>Word (.docx) — FR ou AR</div>
+                  {!fileName && <div style={{fontSize:10.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
+                </div>
+                <input ref={fileRef} type="file" accept=".docx,.pdf,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
+              </>
+            )}
           </Card>
 
           <Card>
@@ -912,280 +644,180 @@ function FSel({label, field, opts, form, setForm}) {
 const CODE_PREFIX = {FORME:"F",FOND:"D",TERMINOLOGIE:"T",BILINGUE:"B"};
 
 // ── CONSIGNES ──
-function ConsignesPage({consignes, setConsignes, onReload, syncStatus}) {
-  const [view, setView] = useState("list"); // "list" | "chat"
-  const [messages, setMessages] = useState([
-    { role: "assistant", content: "Bonjour ! Décris-moi la consigne que tu veux créer ou modifier. Par exemple : *\"Le nom de société doit toujours être précédé de 'la société' dans le titre\"*" }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [pendingConsigne, setPendingConsigne] = useState(null);
-  const [editingId, setEditingId] = useState(null);
+function ConsignesPage({consignes, setConsignes}) {
+  const [selected, setSelected] = useState(null);
   const [filterType, setFilterType] = useState("");
   const [filterCat, setFilterCat] = useState("");
-  const chatEndRef = { current: null };
+  const [form, setForm] = useState({});
+  const [isNew, setIsNew] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  const filtered = consignes.filter(c =>
-    (!filterType || c.doctype === filterType) &&
-    (!filterCat  || c.category === filterCat)
-  );
+  const filtered = consignes.filter(c => (!filterType||c.doctype===filterType) && (!filterCat||c.category===filterCat));
+  const selC = selected ? consignes.find(c => c.id===selected) : null;
 
-
-  const sendMessage = async (userMsg) => {
-    if (!userMsg.trim()) return;
-    const newMessages = [...messages, { role: "user", content: userMsg }];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const resp = await fetch("/api/chat-consigne", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-          existingCodes: consignes.map(c => c.code),
-        }),
-      });
-      const data = await resp.json();
-      const text = data.text || data.error || "Erreur de réponse.";
-
-      // Extraire la consigne du JSON si présente
-      const jsonMatch = text.match(/---CONSIGNE---\s*([\s\S]*?)\s*---FIN---/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[1]);
-          setPendingConsigne({ ...parsed, id: parsed.code, version: "1.0", created: new Date().toLocaleDateString("fr-FR") });
-        } catch(e) { setPendingConsigne(null); }
-      }
-
-      setMessages(m => [...m, { role: "assistant", content: text }]);
-    } catch(e) {
-      setMessages(m => [...m, { role: "assistant", content: "Erreur de connexion : " + e.message }]);
-    }
-    setLoading(false);
+  const selectC = c => { setSelected(c.id); setForm({...c}); setIsNew(false); setSaved(false); };
+  const autoCode = (category, existing) => {
+    const prefix = CODE_PREFIX[category] || "X";
+    const nums = existing
+      .filter(c => c.code && c.code.startsWith(prefix+"-"))
+      .map(c => parseInt(c.code.split("-")[1])||0);
+    const next = nums.length ? Math.max(...nums)+1 : 1;
+    return `${prefix}-${String(next).padStart(2,"0")}`;
+  };
+  const newC = () => {
+    const cat = "FORME";
+    const code = autoCode(cat, consignes);
+    setSelected(null); setIsNew(true); setSaved(false);
+    setForm({code, id:code, doctype:"cp_fr", category:cat, label:"", text:"", examples:"", notes:"", version:"1.0"});
   };
 
-  const integrateConsigne = () => {
-    if (!pendingConsigne) return;
-    if (editingId) {
-      setConsignes(cs => cs.map(c => c.id === editingId ? { ...pendingConsigne, id: editingId } : c));
+  const save = () => {
+    if (!form.code || !form.label || !form.text) return;
+    if (isNew) {
+      const nc = {...form, id:form.code, created:new Date().toLocaleDateString("fr-FR")};
+      setConsignes(c => [...c, nc]);
+      setSelected(nc.id); setIsNew(false);
     } else {
-      const exists = consignes.find(c => c.id === pendingConsigne.id);
-      if (exists) {
-        setConsignes(cs => cs.map(c => c.id === pendingConsigne.id ? pendingConsigne : c));
-      } else {
-        setConsignes(cs => [...cs, pendingConsigne]);
-      }
+      setConsignes(cs => cs.map(c => c.id===selected ? {...c,...form,version:(parseFloat(c.version)+0.1).toFixed(1)} : c));
     }
-    setPendingConsigne(null);
-    setMessages([{ role: "assistant", content: "✅ Consigne intégrée ! Décris-moi une autre règle ou ferme le chat." }]);
-    setEditingId(null);
+    setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
-  const startEdit = (c) => {
-    setEditingId(c.id);
-    setView("chat");
-    setMessages([
-      { role: "assistant", content: `Je vais modifier la consigne **${c.code} — ${c.label}**.\n\nActuellement :\n> ${c.text}\n\nQue veux-tu changer ?` }
-    ]);
-    setPendingConsigne(null);
+  const del = () => {
+    if (!selected || !confirm("Supprimer cette consigne ?")) return;
+    setConsignes(cs => cs.filter(c => c.id !== selected));
+    setSelected(null); setIsNew(false);
   };
 
-  const deleteConsigne = (id) => {
-    if (!confirm("Supprimer cette consigne ?")) return;
-    setConsignes(cs => cs.filter(c => c.id !== id));
+  const dup = () => {
+    const c = consignes.find(x => x.id===selected); if (!c) return;
+    const nc = {...c, id:c.code+"-bis", code:c.code+"-bis", created:new Date().toLocaleDateString("fr-FR"), version:"1.0"};
+    setConsignes(cs => [...cs, nc]);
+    setSelected(nc.id); setForm({...nc}); setIsNew(false);
   };
 
-  const resetChat = () => {
-    setMessages([{ role: "assistant", content: "Décris-moi la consigne que tu veux créer." }]);
-    setPendingConsigne(null); setEditingId(null);
-  };
 
-  // Render message content (simple markdown-like)
-  const renderMsg = (text) => {
-    const withoutJson = text.replace(/---CONSIGNE---[\s\S]*?---FIN---/g, "");
-    return withoutJson.split("\n").map((line, i) => {
-      const bold = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
-      return <div key={i} style={{marginBottom: line ? 3 : 8}} dangerouslySetInnerHTML={{__html: bold || "&nbsp;"}} />;
-    });
-  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
         title="Fiches de consignes"
-        sub="Crée et modifie les consignes par conversation"
+        sub={`Règles de correction par type de document — ${consignes.length} consignes`}
         right={
           <div style={{display:"flex",gap:8}}>
-            <button onClick={onReload} style={{padding:"6px 12px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",fontSize:12,cursor:"pointer",color:C.text2}}>
-              🔄 {syncStatus==="loading"?"…":"Sync"}
+            <button onClick={() => {
+              if(window.confirm(`Importer les ${CONSIGNES_2025.length} fiches officielles 2025 ? Les consignes existantes seront remplacées.`)) {
+                setConsignes(CONSIGNES_2025.map(c => ({...c, created: new Date().toLocaleDateString("fr-FR")})));
+              }
+            }} style={{padding:"7px 14px",border:`1px solid ${C.gold}`,borderRadius:7,background:"#fdf5e0",color:C.amber,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
+              ⬇ Fiches 2025
             </button>
-            {view==="list"
-              ? <button onClick={()=>{setView("chat");resetChat();}} style={{padding:"7px 16px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-                  ✏️ Nouvelle consigne
-                </button>
-              : <button onClick={()=>setView("list")} style={{padding:"7px 16px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,cursor:"pointer"}}>
-                  ← Liste des consignes
-                </button>
-            }
+            <button onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".json";
+              input.onchange = async e => {
+                try {
+                  const text = await e.target.files[0].text();
+                  const data = JSON.parse(text);
+                  const fiches = data.consignes || data;
+                  if (!Array.isArray(fiches)) throw new Error("Format invalide");
+                  if (!window.confirm(`Importer ${fiches.length} fiches depuis le fichier JSON ?\nLes consignes existantes seront remplacées.`)) return;
+                  setConsignes(fiches);
+                } catch(err) {
+                  alert("Erreur : " + err.message);
+                }
+              };
+              input.click();
+            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
+              📂 Importer JSON
+            </button>
+            <button onClick={() => {
+              const data = JSON.stringify({version:"1.0",source:"OCE Platform",created:new Date().toLocaleDateString("fr-FR"),count:consignes.length,consignes}, null, 2);
+              const blob = new Blob([data], {type:"application/json"});
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = "fiches_consignes.json"; a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
+              💾 Exporter JSON
+            </button>
+            <button onClick={newC} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>+ Nouvelle consigne</button>
           </div>
         }
       />
-
-      {view === "list" && (
-        <div style={{flex:1,overflow:"hidden",padding:"16px 28px",display:"grid",gridTemplateColumns:"260px 1fr",gap:14}}>
-          {/* Filtres + liste */}
-          <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"9px 11px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:5}}>
-              <select value={filterType} onChange={e=>setFilterType(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
-                <option value="">Tous types</option>
-                {Object.entries(TYPE_LABELS).filter(([k])=>k!=="tous").map(([v,l])=><option key={v} value={v}>{l}</option>)}
-              </select>
-              <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
-                <option value="">Toutes</option>
-                {["FORME","FOND","TERMINOLOGIE","BILINGUE"].map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div style={{overflowY:"auto",flex:1}}>
-              {filtered.map(c=>(
-                <div key={c.id} style={{padding:"9px 12px",borderBottom:`1px solid ${C.cream2}`,display:"flex",alignItems:"flex-start",gap:8}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
-                      <span style={{fontSize:9.5,fontWeight:600,color:C.text3,fontFamily:"monospace"}}>{c.code}</span>
-                      {c.regex && <span style={{fontSize:8,background:"#e8f5ec",color:C.green,padding:"1px 5px",borderRadius:10,fontWeight:600}}>AUTO</span>}
-                      <span style={{background:CAT_BG[c.category]||"#f0f0f0",color:CAT_FG[c.category]||"#555",padding:"1px 5px",borderRadius:10,fontSize:8,fontWeight:600}}>{c.category}</span>
-                    </div>
-                    <div style={{fontSize:11.5,fontWeight:500,color:C.text,lineHeight:1.3}}>{c.label}</div>
-                    <div style={{fontSize:10.5,color:C.text3,marginTop:2,lineHeight:1.4}}>{c.text?.substring(0,80)}…</div>
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
-                    <button onClick={()=>startEdit(c)} style={{padding:"3px 8px",border:`1px solid ${C.border2}`,borderRadius:5,background:"#fff",fontSize:10,cursor:"pointer",color:C.text2}}>Modifier</button>
-                    <button onClick={()=>deleteConsigne(c.id)} style={{padding:"3px 8px",border:"1px solid #f5b7b7",borderRadius:5,background:C.redLight,fontSize:10,cursor:"pointer",color:C.red}}>Supprimer</button>
-                  </div>
-                </div>
-              ))}
-              {filtered.length===0 && <div style={{padding:20,fontSize:12,color:C.text3,textAlign:"center"}}>Aucune consigne</div>}
-            </div>
-            <div style={{padding:"6px 11px",borderTop:`1px solid ${C.cream2}`,fontSize:9.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
+      <div style={{flex:1,padding:"18px 30px",overflow:"hidden",display:"grid",gridTemplateColumns:"255px 1fr",gap:14}}>
+        {/* Liste */}
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"10px 12px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:5}}>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{flex:1,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+              <option value="">Tous types</option>
+              {Object.entries(TYPE_LABELS).filter(([k]) => k!=="tous").map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{flex:1,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+              <option value="">Toutes</option>
+              {["FORME","FOND","TERMINOLOGIE","BILINGUE"].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
-
-          {/* Instructions à droite */}
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"20px 24px"}}>
-              <div style={{fontSize:14,fontWeight:500,color:C.navy,marginBottom:12}}>Comment créer une consigne</div>
-              {[
-                ["💬","Clique sur \"Nouvelle consigne\"","Lance le chat de consignes"],
-                ["📝","Décris la règle en français","Ex: \"le nom société doit être précédé de la société\""],
-                ["⚡","La règle est générée automatiquement","Avec exemples, tests et règle automatique"],
-                ["🔄","Demande des modifications","Itère jusqu'au résultat souhaité"],
-                ["✅","Valide l'intégration","La consigne est ajoutée à la liste et sauvegardée"],
-              ].map(([icon,title,sub],i)=>(
-                <div key={i} style={{display:"flex",gap:12,marginBottom:12,alignItems:"flex-start"}}>
-                  <div style={{width:32,height:32,borderRadius:8,background:C.cream2,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{icon}</div>
-                  <div>
-                    <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{title}</div>
-                    <div style={{fontSize:11.5,color:C.text3,marginTop:1}}>{sub}</div>
-                  </div>
+          <div style={{overflowY:"auto",flex:1}}>
+            {filtered.map(c => (
+              <div key={c.id} onClick={() => selectC(c)} style={{padding:"8px 12px",borderBottom:`1px solid ${C.cream2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:7,background:selected===c.id?"#edf2ff":"#fff",borderLeft:selected===c.id?`3px solid ${C.navy2}`:"3px solid transparent",transition:"all .1s"}}>
+                <span style={{fontSize:9.5,fontWeight:600,color:C.text3,minWidth:32,fontFamily:"monospace"}}>{c.code}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</div>
+                  <div style={{fontSize:9.5,color:C.text3,marginTop:1}}>{TYPE_LABELS[c.doctype]||c.doctype}</div>
                 </div>
-              ))}
-            </div>
-            <div style={{background:C.navy,borderRadius:10,padding:"16px 20px",color:"rgba(255,255,255,.8)",fontSize:12.5,lineHeight:1.7}}>
-              <div style={{fontWeight:600,color:"#fff",marginBottom:6}}>💡 Conseil</div>
-              Les consignes avec le badge <span style={{background:"#e8f5ec",color:C.green,padding:"1px 6px",borderRadius:10,fontSize:10,fontWeight:600}}>AUTO</span> sont appliquées automatiquement sur le document Word — ce sont les plus fiables.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {view === "chat" && (
-        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",padding:"16px 28px",gap:12}}>
-          {editingId && (
-            <div style={{padding:"8px 14px",background:C.amberLight,border:`1px solid #d4a853`,borderRadius:8,fontSize:12,color:C.amber,flexShrink:0}}>
-              ✏️ Mode modification — consigne <strong>{editingId}</strong>
-            </div>
-          )}
-
-          {/* Messages */}
-          <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingRight:4}}>
-            {messages.map((msg, i) => (
-              <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
-                <div style={{
-                  maxWidth:"82%",padding:"11px 14px",borderRadius:10,fontSize:13,lineHeight:1.6,
-                  background:msg.role==="user"?C.navy:"#fff",
-                  color:msg.role==="user"?"#fff":C.text,
-                  border:msg.role==="user"?"none":`1px solid ${C.border}`,
-                  borderBottomRightRadius:msg.role==="user"?2:10,
-                  borderBottomLeftRadius:msg.role==="assistant"?2:10,
-                }}>
-                  {msg.role==="assistant" ? renderMsg(msg.content) : msg.content}
-                </div>
+                <span style={{background:CAT_BG[c.category]||"#f0f0f0",color:CAT_FG[c.category]||"#555",padding:"1px 5px",borderRadius:20,fontSize:8,fontWeight:600,flexShrink:0}}>{c.category}</span>
               </div>
             ))}
-
-            {loading && (
-              <div style={{display:"flex",justifyContent:"flex-start"}}>
-                <div style={{padding:"11px 16px",borderRadius:10,background:"#fff",border:`1px solid ${C.border}`,display:"flex",gap:5,alignItems:"center"}}>
-                  {[0,1,2].map(i=>(
-                    <div key={i} style={{width:7,height:7,borderRadius:"50%",background:C.navy2,animation:`bounce .9s ${i*0.15}s infinite`}}/>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div ref={el=>{if(el)el.scrollIntoView({behavior:"smooth"})}}/>
+            {filtered.length === 0 && <div style={{padding:18,fontSize:12,color:C.text3,textAlign:"center"}}>Aucune consigne</div>}
           </div>
-
-          {/* Consigne en attente */}
-          {pendingConsigne && (
-            <div style={{background:"#fff",border:`2px solid ${C.green}`,borderRadius:10,padding:"14px 18px",flexShrink:0}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                <div style={{fontSize:13,fontWeight:600,color:C.green}}>✅ Consigne prête à intégrer</div>
-                <div style={{display:"flex",gap:7}}>
-                  <button onClick={()=>sendMessage("Modifie cette consigne : ")} style={{padding:"6px 12px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:11.5,cursor:"pointer",color:C.text2}}>
-                    Demander une modification
-                  </button>
-                  <button onClick={integrateConsigne} style={{padding:"6px 14px",border:"none",borderRadius:6,background:C.green,color:"#fff",fontSize:11.5,fontWeight:600,cursor:"pointer"}}>
-                    ✓ Intégrer la consigne
-                  </button>
-                </div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"4px 12px",fontSize:12}}>
-                <span style={{color:C.text3,fontWeight:500}}>Code</span><span style={{fontFamily:"monospace",color:C.navy2}}>{pendingConsigne.code}</span>
-                <span style={{color:C.text3,fontWeight:500}}>Intitulé</span><span>{pendingConsigne.label}</span>
-                <span style={{color:C.text3,fontWeight:500}}>Type</span><span>{TYPE_LABELS[pendingConsigne.doctype]||pendingConsigne.doctype} · {pendingConsigne.category}</span>
-                <span style={{color:C.text3,fontWeight:500}}>Règle</span><span style={{fontStyle:"italic"}}>{pendingConsigne.text?.substring(0,120)}…</span>
-                {pendingConsigne.regex && <><span style={{color:C.text3,fontWeight:500}}>Auto</span><span style={{background:"#e8f5ec",color:C.green,padding:"1px 7px",borderRadius:10,fontSize:10,fontWeight:600,display:"inline-block"}}>Correction automatique active</span></>}
-              </div>
-            </div>
-          )}
-
-          {/* Input */}
-          <div style={{display:"flex",gap:8,flexShrink:0}}>
-            <input
-              value={input} onChange={e=>setInput(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!loading){e.preventDefault();sendMessage(input);}}}
-              placeholder="Décris la règle ou demande une modification… (Entrée pour envoyer)"
-              disabled={loading}
-              style={{flex:1,padding:"11px 14px",border:`1px solid ${C.border2}`,borderRadius:8,fontFamily:"inherit",fontSize:13,color:C.text,outline:"none"}}
-            />
-            <button onClick={()=>sendMessage(input)} disabled={loading||!input.trim()}
-              style={{padding:"11px 20px",border:"none",borderRadius:8,background:loading||!input.trim()?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:loading||!input.trim()?"not-allowed":"pointer",flexShrink:0}}>
-              Envoyer
-            </button>
-          </div>
+          <div style={{padding:"7px 12px",borderTop:`1px solid ${C.cream2}`,fontSize:9.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
         </div>
-      )}
 
-      <style>{`
-        @keyframes bounce {
-          0%,80%,100%{transform:translateY(0)}
-          40%{transform:translateY(-6px)}
-        }
-      `}</style>
+        {/* Éditeur */}
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
+          {!selected && !isNew ? (
+            <div style={{textAlign:"center",padding:"44px 20px",color:C.text3}}>
+              <div style={{fontSize:30,marginBottom:9,opacity:.25}}>📋</div>
+              <p style={{fontSize:12.5}}>Sélectionnez une consigne ou créez-en une nouvelle</p>
+            </div>
+          ) : (
+            <>
+              <div style={{display:"flex",alignItems:"center",gap:9,paddingBottom:12,borderBottom:`1px solid ${C.cream2}`}}>
+                <div style={{flex:1,fontSize:13,fontWeight:500,color:C.navy2}}>{isNew ? "Nouvelle consigne" : `Consigne ${selC?.code}`}</div>
+                {!isNew && <span style={{fontSize:9.5,padding:"2px 7px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>v{selC?.version}</span>}
+                {saved && <span style={{fontSize:10,color:C.green,fontWeight:500}}>✓ Enregistré</span>}
+                <button onClick={save} style={{padding:"5px 13px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Enregistrer</button>
+                {!isNew && <button onClick={dup} style={{padding:"5px 11px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:11,cursor:"pointer",color:C.text2}}>Dupliquer</button>}
+                {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red}}>Supprimer</button>}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}>
+                <FInput label="Code" field="code" ph="ex : F-01" form={form} setForm={setForm}/>
+                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["tous","Tous types"]]} form={form} setForm={setForm}/>
+                <div>
+                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Catégorie</div>
+                <select value={form.category||""} onChange={e => {
+                  const cat = e.target.value;
+                  const newCode = isNew ? autoCode(cat, consignes) : form.code;
+                  setForm(f => ({...f, category:cat, code:newCode, id:newCode}));
+                }} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
+                  {[["FORME","Forme"],["FOND","Fond"],["TERMINOLOGIE","Terminologie"],["BILINGUE","Bilingue"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              </div>
+              <FInput label="Intitulé de la consigne" field="label" ph="ex : Formule d'ouverture FR" form={form} setForm={setForm}/>
+              <FInput label="Description / règle complète" field="text" ph="Décrire la règle de correction, les formulations correctes, les erreurs à détecter…" area={4} form={form} setForm={setForm}/>
+              <FInput label="Exemples (incorrect → correct)" field="examples" ph="Incorrect : xxx → Correct : yyy" area={3} form={form} setForm={setForm}/>
+              <FInput label="Notes / source" field="notes" ph="ex : Article 13 loi n°104-12" form={form} setForm={setForm}/>
+              {!isNew && <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>Créé le {selC?.created} · Version {selC?.version}</div>}
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
-
 
 // ── UTILISATEURS ──
 function UtilisateursPage() {
@@ -1238,72 +870,10 @@ function UtilisateursPage() {
 }
 
 // ── ROOT ──
-
-// ── ROOT ──
 export default function App() {
   const [page, setPage] = useState("correction");
-  const [history, setHistory] = useState([]);
   const [consignes, setConsignes] = useState(DEFAULT_CONSIGNES);
-  const [consignesSha, setConsignesSha] = useState(null);
-  const [syncStatus, setSyncStatus] = useState("loading");
-  const [syncMessage, setSyncMessage] = useState("");
-
-  // Charger les consignes depuis GitHub au démarrage
-  const loadConsignes = async () => {
-    setSyncStatus("loading");
-    try {
-      const res = await fetch("/api/get-consignes");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setConsignes(data.consignes);
-      setConsignesSha(data.sha);
-      setSyncStatus("idle");
-    } catch (err) {
-      console.warn("Chargement hors-ligne:", err);
-      setSyncStatus("error");
-      setSyncMessage("Hors-ligne — modifications non persistées");
-    }
-  };
-
-  // Utiliser useEffect pour le chargement initial
-  
-
-
-  // Chargement initial au montage du composant
-  useState(() => { loadConsignes(); return null; });
-
-  const saveConsignes = async (newConsignes, currentSha) => {
-    const sha = currentSha || consignesSha;
-    if (!sha) { setSyncStatus("error"); setSyncMessage("SHA manquant — rechargez"); return; }
-    setSyncStatus("saving");
-    try {
-      const res = await fetch("/api/save-consignes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ consignes: newConsignes, sha }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setConsignesSha(data.newSha);
-      setSyncStatus("saved");
-      setSyncMessage(`✓ Sauvegardé · commit ${data.commit.substring(0,7)}`);
-      setTimeout(() => setSyncStatus("idle"), 4000);
-    } catch (err) {
-      setSyncStatus("error");
-      setSyncMessage("Erreur de sauvegarde");
-    }
-  };
-
-  const setConsignesWithSave = (updater) => {
-    setConsignes(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      saveConsignes(next);
-      return next;
-    });
-  };
-
-  const syncColors = { loading:"#b8962e", saving:"#b8962e", saved:"#1a5c2a", error:"#8b1a1a", idle:null };
-  const syncIcons  = { loading:"⏳", saving:"💾", saved:"✓", error:"⚠️", idle:null };
+  const [history, setHistory] = useState([]);
 
   return (
     <>
@@ -1315,22 +885,14 @@ export default function App() {
         ::-webkit-scrollbar-thumb { background: #d8d3c8; border-radius: 2px; }
         input, select, textarea, button { font-family: inherit; }
       `}</style>
-      <div style={{display:"flex",height:"100vh",overflow:"hidden",background:"#f8f6f0"}}>
-        <div style={{display:"flex",flexDirection:"column",width:210,background:"#0f2650",flexShrink:0}}>
-          <Sidebar page={page} setPage={setPage}/>
-          {syncStatus !== "idle" && (
-            <div style={{padding:"7px 14px",background:"rgba(0,0,0,.25)",borderTop:"1px solid rgba(255,255,255,.08)",display:"flex",alignItems:"center",gap:7,marginTop:"auto"}}>
-              <span style={{fontSize:12}}>{syncIcons[syncStatus]}</span>
-              <span style={{fontSize:10,color:syncColors[syncStatus]||"#8a8aaa",lineHeight:1.3,flex:1}}>{syncMessage||syncStatus}</span>
-            </div>
-          )}
-        </div>
+      <div style={{display:"flex",height:"100vh",overflow:"hidden",background:C.cream}}>
+        <Sidebar page={page} setPage={setPage}/>
         <main style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          {page==="correction"   && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
-          {page==="historique"   && <HistoriquePage history={history}/>}
-          {page==="dashboard"    && <DashboardPage history={history}/>}
-          {page==="consignes"    && <ConsignesPage consignes={consignes} setConsignes={setConsignesWithSave} onReload={loadConsignes} syncStatus={syncStatus}/>}
-          {page==="utilisateurs" && <UtilisateursPage/>}
+          {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
+          {page==="historique"    && <HistoriquePage history={history}/>}
+          {page==="dashboard"     && <DashboardPage history={history}/>}
+          {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignes}/>}
+          {page==="utilisateurs"  && <UtilisateursPage/>}
         </main>
       </div>
     </>
