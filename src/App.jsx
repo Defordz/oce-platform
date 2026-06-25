@@ -110,6 +110,21 @@ function SLabel({children}) {
   return <div style={{fontSize:9.5,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7}}>{children}</div>;
 }
 
+// Recherche tolerante aux espaces : on normalise les blancs (espaces, tabs,
+// espaces insecables) tout en gardant le mapping vers le texte brut, pour
+// localiser une correction meme si l'espacement differe legerement.
+function buildNormMap(s) {
+  const isWs = ch => ch === " " || ch === "\t" || ch === "\u00a0" || ch === "\u202f" || ch === "\u2009" || ch === "\f" || ch === "\u000b";
+  let norm = "", map = [], i = 0;
+  while (i < s.length) {
+    if (isWs(s[i])) { norm += " "; map.push(i); i++; while (i < s.length && isWs(s[i])) i++; }
+    else { norm += s[i]; map.push(i); i++; }
+  }
+  map.push(s.length);
+  return { norm, map };
+}
+function normSpaces(s) { return s.replace(/[ \t\u00a0\u202f\u2009\f\u000b]+/g, " "); }
+
 // ── CORRECTION PAGE ──
 function CorrectionPage({consignes, history, setHistory}) {
   const [docType, setDocType] = useState("cp_fr");
@@ -124,6 +139,7 @@ function CorrectionPage({consignes, history, setHistory}) {
   const [score, setScore] = useState(null);
   const [statuses, setStatuses] = useState({});
   const [error, setError] = useState("");
+  const [notApplied, setNotApplied] = useState([]);
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -135,9 +151,15 @@ function CorrectionPage({consignes, history, setHistory}) {
     try {
       const zip = await JSZip.loadAsync(arrayBuffer);
       const docXml = await zip.file("word/document.xml").async("string");
-      // Extract text from all w:t tags
-      const textMatches = [...docXml.matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)];
-      const extracted = textMatches.map(m => m[1]).join("").replace(/[ \t]+/g, " ").trim();
+      // Extraire le texte PAR PARAGRAPHE pour preserver la structure du document.
+      // Coller toutes les lignes bout a bout fabriquait de fausses corrections
+      // (mots de deux lignes voisines colles) et des corrections a cheval sur
+      // deux paragraphes, impossibles a reappliquer.
+      const paras = [...docXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map(p => {
+        const t = [...p[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m => m[1]).join("");
+        return t.replace(/[ \t\u00a0\u202f\u2009]+/g, " ").trim();
+      }).filter(t => t.length);
+      const extracted = paras.join("\n");
       setFileContent(extracted);
     } catch(e) {
       // Fallback: read as plain text (for .txt files)
@@ -151,7 +173,7 @@ function CorrectionPage({consignes, history, setHistory}) {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   const analyze = async () => {
-    setPhase("loading"); setLoadStep(0); setStatuses({}); setError("");
+    setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]);
 
     // Animate steps
     for (let i = 0; i < steps.length; i++) {
@@ -207,10 +229,11 @@ ${fondInstructions}
 ${terminologieInstructions}
 
 DOCUMENT À CORRIGER:
-${text.substring(0, 6000)}${text.length > 6000 ? "...[tronqué]" : ""}
+${text.substring(0, 12000)}${text.length > 12000 ? "...[tronqué]" : ""}
 
 RÈGLES IMPORTANTES:
 - Le champ "original" doit contenir EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot
+- Le document conserve les sauts de ligne entre les sections : le champ "original" doit être un extrait situé sur UNE SEULE ligne, jamais à cheval sur deux lignes
 - Le champ "suggested" contient la correction
 - Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
 - Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
@@ -242,7 +265,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
         },
         body: JSON.stringify({
           model: "claude-opus-4-5",
-          max_tokens: 2000,
+          max_tokens: 4000,
           messages: [{ role: "user", content: prompt }],
         }),
       });
@@ -274,12 +297,14 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 
   const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
-  // Apply Track Changes across runs in a paragraph
-  const applyTrackChangesToPara = (paraXml, corrections, changeId, date) => {
+  // Apply Track Changes across runs in a paragraph (recherche tolerante aux espaces)
+  const applyTrackChangesToPara = (paraXml, corrections, appliedFlags, changeId, date) => {
     const RUN_RE = /(<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>)/g;
     let result = paraXml;
 
-    for (const { original, suggested } of corrections) {
+    for (let ci = 0; ci < corrections.length; ci++) {
+      const { original, suggested } = corrections[ci];
+      if (!original) continue;
       const runMatches = [...result.matchAll(RUN_RE)];
       if (!runMatches.length) continue;
 
@@ -288,10 +313,18 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
         return t ? t[1] : "";
       });
       const combined = texts.join("");
-      const pos = combined.indexOf(original);
-      if (pos === -1) continue;
 
-      const end = pos + original.length;
+      // Recherche tolerante : on normalise les blancs des deux cotes, puis on
+      // remappe la position trouvee vers le texte brut pour supprimer/inserer.
+      const { norm, map } = buildNormMap(combined);
+      const normOriginal = normSpaces(original);
+      if (!normOriginal.trim()) continue;
+      const npos = norm.indexOf(normOriginal);
+      if (npos === -1) continue;
+      const pos = map[npos];
+      const end = map[npos + normOriginal.length];
+      if (pos == null || end == null) continue;
+
       let cum = 0, startRun = null, endRun = null;
       for (let i = 0; i < texts.length; i++) {
         const runEnd = cum + texts[i].length;
@@ -306,21 +339,23 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const rprMatch = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
       const rpr = rprMatch ? rprMatch[0] : "";
 
-      // Text before/after match within the spanned runs
+      // Text before/after match within the spanned runs (texte brut)
       const spanStart = texts.slice(0, startRun).join("").length;
       const spanEnd = texts.slice(0, endRun + 1).join("").length;
+      const rawOriginal = combined.slice(pos, end);
       const preText = combined.slice(spanStart, pos);
       const postText = combined.slice(end, spanEnd);
 
       const preXml = preText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>` : "";
       const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
-      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(original)}</w:delText></w:r></w:del>`;
+      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(rawOriginal)}</w:delText></w:r></w:del>`;
       const insBlock = `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
       const replacement = preXml + delBlock + insBlock + postXml;
 
       const firstStart = runMatches[startRun].index;
       const lastEnd = runMatches[endRun].index + runMatches[endRun][0].length;
       result = result.slice(0, firstStart) + replacement + result.slice(lastEnd);
+      if (appliedFlags) appliedFlags[ci] = true;
     }
     return result;
   };
@@ -331,6 +366,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     if (!fileBytes) { alert("Veuillez uploader un fichier .docx pour utiliser cette fonctionnalité."); return; }
 
     try {
+      setNotApplied([]);
       const zip = await JSZip.loadAsync(fileBytes);
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
@@ -338,8 +374,9 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 
       // Process paragraph by paragraph
       const correctionsList = accepted.map(c => ({ original: c.original, suggested: c.suggested }));
-      const result = docXml.replace(/(<w:p[ >][\s\S]*?<\/w:p>)/g, (para) =>
-        applyTrackChangesToPara(para, correctionsList, changeId, date)
+      const appliedFlags = new Array(correctionsList.length).fill(false);
+      const result = docXml.replace(/(<w:p\b[\s\S]*?<\/w:p>)/g, (para) =>
+        applyTrackChangesToPara(para, correctionsList, appliedFlags, changeId, date)
       );
 
       zip.file("word/document.xml", result);
@@ -353,6 +390,10 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       a.download = (fileName||"document").replace(/\.docx$/i, "") + "_corrections.docx";
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      // Filet de securite : signaler les corrections qui n'ont pas pu etre placees
+      const manques = accepted.filter((_, i) => !appliedFlags[i]);
+      setNotApplied(manques);
     } catch(e) {
       alert("Erreur lors de la génération du fichier : " + e.message);
     }
@@ -496,6 +537,24 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
               <button onClick={downloadWord} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
                 <span>📥</span> Télécharger Word (.docx) avec corrections
               </button>
+
+              {notApplied.length > 0 && (
+                <Card style={{borderLeft:`3px solid ${C.amber}`,background:C.amberLight}}>
+                  <div style={{fontSize:12.5,fontWeight:600,color:C.amber,marginBottom:6}}>⚠️ {notApplied.length} correction(s) non appliquée(s) au fichier Word</div>
+                  <div style={{fontSize:11,color:C.text2,marginBottom:8,lineHeight:1.5}}>Ces corrections n'ont pas pu être localisées exactement dans le document et doivent être faites à la main. Toutes les autres ont bien été appliquées dans le fichier téléchargé.</div>
+                  {notApplied.map((c,i) => (
+                    <div key={i} style={{fontSize:11,padding:"6px 9px",background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:5}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                        {c.code && <span style={{fontFamily:"monospace",color:C.text3,fontSize:9.5}}>{c.code}</span>}
+                        {c.reason && <span style={{color:C.text3,fontSize:10}}>{c.reason}</span>}
+                      </div>
+                      <span style={{color:C.red,textDecoration:"line-through"}}>{c.original}</span>
+                      <span style={{color:C.text3,margin:"0 5px"}}>→</span>
+                      <span style={{color:C.green,fontWeight:500}}>{c.suggested}</span>
+                    </div>
+                  ))}
+                </Card>
+              )}
             </div>
           )}
         </div>
