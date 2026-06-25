@@ -125,6 +125,34 @@ function buildNormMap(s) {
 }
 function normSpaces(s) { return s.replace(/[ \t\u00a0\u202f\u2009\f\u000b]+/g, " "); }
 
+// Diff caractere par caractere (LCS) entre le texte original et la correction.
+// Renvoie des "ilots" minimaux : seules les parties reellement modifiees, pour
+// que la revision ne barre pas la phrase entiere mais juste le mot touche.
+function diffIslands(a, b) {
+  const n = a.length, m = b.length;
+  const dp = [];
+  for (let i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  let i = 0, j = 0; const ops = [];
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { ops.push([0, a[i]]); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push([1, a[i]]); i++; }
+    else { ops.push([2, b[j]]); j++; }
+  }
+  while (i < n) { ops.push([1, a[i]]); i++; }
+  while (j < m) { ops.push([2, b[j]]); j++; }
+  const islands = []; let cur = null, ai = 0;
+  for (const [t, ch] of ops) {
+    if (t === 0) { if (cur) { islands.push(cur); cur = null; } ai++; }
+    else if (t === 1) { if (!cur) cur = { start: ai, del: "", ins: "" }; cur.del += ch; ai++; }
+    else { if (!cur) cur = { start: ai, del: "", ins: "" }; cur.ins += ch; }
+  }
+  if (cur) islands.push(cur);
+  return islands;
+}
+
 // ── CORRECTION PAGE ──
 function CorrectionPage({consignes, history, setHistory}) {
   const [docType, setDocType] = useState("cp_fr");
@@ -297,65 +325,103 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 
   const escXml = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
-  // Apply Track Changes across runs in a paragraph (recherche tolerante aux espaces)
-  const applyTrackChangesToPara = (paraXml, corrections, appliedFlags, changeId, date) => {
-    const RUN_RE = /(<w:r[ >](?:(?!<w:r[ >])[\s\S])*?<\/w:r>)/g;
-    let result = paraXml;
+  const RUN_RE_SRC = "(<w:r[ >](?:(?!<w:r[ >])[\\s\\S])*?<\\/w:r>)";
 
+  // Splice cible : remplace la plage brute [start,end) du paragraphe par une
+  // suppression (texte supprime) et/ou une insertion, en preservant la mise en
+  // forme et les runs voisins. end==start => insertion pure ; ins vide => suppression pure.
+  const spliceRange = (paraXml, combined, start, end, ins, changeId, date) => {
+    const RUN_RE = new RegExp(RUN_RE_SRC, "g");
+    const runs = [...paraXml.matchAll(RUN_RE)];
+    if (!runs.length) return paraXml;
+    const texts = runs.map(m => {
+      const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+      return t ? t[1] : "";
+    });
+    let cum = 0, sR = null, eR = null;
+    for (let i = 0; i < texts.length; i++) {
+      const runEnd = cum + texts[i].length;
+      if (sR === null && runEnd > start) sR = i;
+      if (runEnd >= end) { eR = i; break; }
+      cum += texts[i].length;
+    }
+    if (sR === null) sR = texts.length - 1;
+    if (eR === null) eR = sR;
+
+    const rprMatch = runs[sR][0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
+    const rpr = rprMatch ? rprMatch[0] : "";
+    const spanStart = texts.slice(0, sR).join("").length;
+    const spanEnd = texts.slice(0, eR + 1).join("").length;
+    const rawDel = combined.slice(start, end);
+    const pre = combined.slice(spanStart, start);
+    const post = combined.slice(end, spanEnd);
+
+    let out = "";
+    if (pre) out += `<w:r>${rpr}<w:t xml:space="preserve">${escXml(pre)}</w:t></w:r>`;
+    if (rawDel) out += `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(rawDel)}</w:delText></w:r></w:del>`;
+    if (ins) out += `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(ins)}</w:t></w:r></w:ins>`;
+    if (post) out += `<w:r>${rpr}<w:t xml:space="preserve">${escXml(post)}</w:t></w:r>`;
+
+    const firstStart = runs[sR].index;
+    const lastEnd = runs[eR].index + runs[eR][0].length;
+    return paraXml.slice(0, firstStart) + out + paraXml.slice(lastEnd);
+  };
+
+  // Applique les corrections a un paragraphe :
+  //  1. localise chaque correction (recherche tolerante aux espaces) contre le
+  //     texte ORIGINAL du paragraphe ;
+  //  2. calcule des marques MINIMALES (seuls les caracteres reellement changes) ;
+  //  3. regroupe les ilots de toutes les corrections, deduplique les identiques
+  //     et ecarte les chevauchements (ce qui recupere des corrections qui visent
+  //     le meme endroit) ;
+  //  4. applique les marques retenues de la fin vers le debut.
+  const applyTrackChangesToPara = (paraXml, corrections, appliedFlags, changeId, date) => {
+    const RUN_RE = new RegExp(RUN_RE_SRC, "g");
+    const runs0 = [...paraXml.matchAll(RUN_RE)];
+    if (!runs0.length) return paraXml;
+    const texts0 = runs0.map(m => {
+      const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
+      return t ? t[1] : "";
+    });
+    const combined = texts0.join("");
+    const { norm, map } = buildNormMap(combined);
+
+    // Collecter les ilots minimaux de toutes les corrections
+    const islands = [];
     for (let ci = 0; ci < corrections.length; ci++) {
       const { original, suggested } = corrections[ci];
       if (!original) continue;
-      const runMatches = [...result.matchAll(RUN_RE)];
-      if (!runMatches.length) continue;
-
-      const texts = runMatches.map(m => {
-        const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-        return t ? t[1] : "";
-      });
-      const combined = texts.join("");
-
-      // Recherche tolerante : on normalise les blancs des deux cotes, puis on
-      // remappe la position trouvee vers le texte brut pour supprimer/inserer.
-      const { norm, map } = buildNormMap(combined);
-      const normOriginal = normSpaces(original);
-      if (!normOriginal.trim()) continue;
-      const npos = norm.indexOf(normOriginal);
-      if (npos === -1) continue;
-      const pos = map[npos];
-      const end = map[npos + normOriginal.length];
-      if (pos == null || end == null) continue;
-
-      let cum = 0, startRun = null, endRun = null;
-      for (let i = 0; i < texts.length; i++) {
-        const runEnd = cum + texts[i].length;
-        if (startRun === null && runEnd > pos) startRun = i;
-        if (runEnd >= end) { endRun = i; break; }
-        cum += texts[i].length;
+      const no = normSpaces(original);
+      if (!no.trim()) continue;
+      const k = norm.indexOf(no);
+      if (k === -1) continue;
+      const ps = map[k], pe = map[k + no.length];
+      if (ps == null || pe == null) continue;
+      const rawO = combined.slice(ps, pe);
+      for (const isl of diffIslands(rawO, suggested)) {
+        const a = ps + isl.start;
+        islands.push({ a, b: a + isl.del.length, ins: isl.ins, ci });
       }
-      if (startRun === null || endRun === null) continue;
+    }
+    if (!islands.length) return paraXml;
 
-      // Get formatting from first run
-      const firstRunXml = runMatches[startRun][0];
-      const rprMatch = firstRunXml.match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
-      const rpr = rprMatch ? rprMatch[0] : "";
+    // Tri, dedup, et resolution des chevauchements (on garde le premier)
+    islands.sort((x, y) => (x.a - y.a) || (x.b - y.b));
+    const kept = []; const seen = new Set(); let lastEnd = -1;
+    for (const it of islands) {
+      const key = it.a + "|" + it.b + "|" + it.ins;
+      if (seen.has(key)) { if (appliedFlags) appliedFlags[it.ci] = true; continue; }
+      if (it.a < lastEnd) continue; // chevauchement -> laisse a l'encadre orange
+      seen.add(key); kept.push(it);
+      if (appliedFlags) appliedFlags[it.ci] = true;
+      lastEnd = Math.max(lastEnd, it.b);
+    }
 
-      // Text before/after match within the spanned runs (texte brut)
-      const spanStart = texts.slice(0, startRun).join("").length;
-      const spanEnd = texts.slice(0, endRun + 1).join("").length;
-      const rawOriginal = combined.slice(pos, end);
-      const preText = combined.slice(spanStart, pos);
-      const postText = combined.slice(end, spanEnd);
-
-      const preXml = preText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(preText)}</w:t></w:r>` : "";
-      const postXml = postText ? `<w:r>${rpr}<w:t xml:space="preserve">${escXml(postText)}</w:t></w:r>` : "";
-      const delBlock = `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(rawOriginal)}</w:delText></w:r></w:del>`;
-      const insBlock = `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(suggested)}</w:t></w:r></w:ins>`;
-      const replacement = preXml + delBlock + insBlock + postXml;
-
-      const firstStart = runMatches[startRun].index;
-      const lastEnd = runMatches[endRun].index + runMatches[endRun][0].length;
-      result = result.slice(0, firstStart) + replacement + result.slice(lastEnd);
-      if (appliedFlags) appliedFlags[ci] = true;
+    // Appliquer de la fin vers le debut pour garder les positions valides
+    let result = paraXml;
+    kept.sort((x, y) => y.a - x.a);
+    for (const it of kept) {
+      result = spliceRange(result, combined, it.a, it.b, it.ins, changeId, date);
     }
     return result;
   };
