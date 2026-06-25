@@ -150,7 +150,30 @@ function diffIslands(a, b) {
     else { if (!cur) cur = { start: ai, del: "", ins: "" }; cur.ins += ch; }
   }
   if (cur) islands.push(cur);
-  return islands;
+
+  // Coalescer les ilots separes par un court texte identique (evite les marques
+  // en miettes du type "soci" + "ete"). Le texte identique du trou est repris des
+  // deux cotes (suppression + insertion), ce qui ne change pas le resultat final.
+  const GAP = 6;
+  const merged = [];
+  for (const isl of islands) {
+    const last = merged[merged.length - 1];
+    if (last) {
+      const gapStart = last.start + last.del.length;
+      const gap = isl.start - gapStart;
+      if (gap >= 0 && gap <= GAP) {
+        const gapText = a.slice(gapStart, isl.start);
+        last.del += gapText + isl.del;
+        last.ins += gapText + isl.ins;
+        continue;
+      }
+    }
+    merged.push({ start: isl.start, del: isl.del, ins: isl.ins });
+  }
+  // Si la phrase est trop remaniee (diff tres fragmente), revenir a un simple
+  // remplacement global : une seule marque "ancien -> nouveau", lisible.
+  if (merged.length > 8) return [{ start: 0, del: a, ins: b }];
+  return merged;
 }
 
 // ── CORRECTION PAGE ──
@@ -342,11 +365,12 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     for (let i = 0; i < texts.length; i++) {
       const runEnd = cum + texts[i].length;
       if (sR === null && runEnd > start) sR = i;
-      if (runEnd >= end) { eR = i; break; }
+      if (sR !== null && runEnd >= end) { eR = i; break; }
       cum += texts[i].length;
     }
     if (sR === null) sR = texts.length - 1;
     if (eR === null) eR = sR;
+    if (eR < sR) eR = sR;
 
     const rprMatch = runs[sR][0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
     const rpr = rprMatch ? rprMatch[0] : "";
@@ -369,12 +393,13 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 
   // Applique les corrections a un paragraphe :
   //  1. localise chaque correction (recherche tolerante aux espaces) contre le
-  //     texte ORIGINAL du paragraphe ;
-  //  2. calcule des marques MINIMALES (seuls les caracteres reellement changes) ;
-  //  3. regroupe les ilots de toutes les corrections, deduplique les identiques
-  //     et ecarte les chevauchements (ce qui recupere des corrections qui visent
-  //     le meme endroit) ;
-  //  4. applique les marques retenues de la fin vers le debut.
+  //     texte ORIGINAL du paragraphe et calcule ses marques minimales ;
+  //  2. resout les chevauchements au niveau des PLAGES de correction : si deux
+  //     corrections visent une zone qui se recoupe, on garde la plus large (pour
+  //     eviter d'appliquer deux corrections contradictoires et de dupliquer le
+  //     texte). Une correction ecartee mais redondante (ses marques sont deja
+  //     couvertes par la correction gardee) est comptee comme appliquee ;
+  //  3. applique les marques retenues de la fin vers le debut.
   const applyTrackChangesToPara = (paraXml, corrections, appliedFlags, changeId, date) => {
     const RUN_RE = new RegExp(RUN_RE_SRC, "g");
     const runs0 = [...paraXml.matchAll(RUN_RE)];
@@ -386,8 +411,8 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
     const combined = texts0.join("");
     const { norm, map } = buildNormMap(combined);
 
-    // Collecter les ilots minimaux de toutes les corrections
-    const islands = [];
+    // 1. localiser chaque correction + calculer ses ilots (positions absolues)
+    const located = [];
     for (let ci = 0; ci < corrections.length; ci++) {
       const { original, suggested } = corrections[ci];
       if (!original) continue;
@@ -398,29 +423,44 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       const ps = map[k], pe = map[k + no.length];
       if (ps == null || pe == null) continue;
       const rawO = combined.slice(ps, pe);
-      for (const isl of diffIslands(rawO, suggested)) {
+      const isls = diffIslands(rawO, suggested).map(isl => {
         const a = ps + isl.start;
-        islands.push({ a, b: a + isl.del.length, ins: isl.ins, ci });
+        return { a, b: a + isl.del.length, ins: isl.ins };
+      });
+      located.push({ ci, ps, pe, isls });
+    }
+    if (!located.length) return paraXml;
+
+    // 2. resoudre les chevauchements de plages : par debut croissant, puis plage
+    //    la plus large d'abord ; on garde les plages disjointes.
+    located.sort((x, y) => (x.ps - y.ps) || ((y.pe - y.ps) - (x.pe - x.ps)));
+    const kept = [];
+    for (const c of located) {
+      const overlaps = kept.some(k => c.ps < k.pe && c.pe > k.ps);
+      if (!overlaps) { kept.push(c); if (appliedFlags) appliedFlags[c.ci] = true; }
+      else c.overlapped = true;
+    }
+
+    // 3. liste des ilots a appliquer (corrections gardees), dedupliques
+    const applyIslands = []; const seen = new Set();
+    for (const c of kept) {
+      for (const it of c.isls) {
+        const key = it.a + "|" + it.b + "|" + it.ins;
+        if (seen.has(key)) continue;
+        seen.add(key); applyIslands.push(it);
       }
     }
-    if (!islands.length) return paraXml;
-
-    // Tri, dedup, et resolution des chevauchements (on garde le premier)
-    islands.sort((x, y) => (x.a - y.a) || (x.b - y.b));
-    const kept = []; const seen = new Set(); let lastEnd = -1;
-    for (const it of islands) {
-      const key = it.a + "|" + it.b + "|" + it.ins;
-      if (seen.has(key)) { if (appliedFlags) appliedFlags[it.ci] = true; continue; }
-      if (it.a < lastEnd) continue; // chevauchement -> laisse a l'encadre orange
-      seen.add(key); kept.push(it);
-      if (appliedFlags) appliedFlags[it.ci] = true;
-      lastEnd = Math.max(lastEnd, it.b);
+    // corrections ecartees mais redondantes -> comptees appliquees ; sinon orange
+    for (const c of located) {
+      if (!c.overlapped) continue;
+      const redundant = c.isls.length > 0 && c.isls.every(it => seen.has(it.a + "|" + it.b + "|" + it.ins));
+      if (redundant && appliedFlags) appliedFlags[c.ci] = true;
     }
 
-    // Appliquer de la fin vers le debut pour garder les positions valides
+    // 4. appliquer de la fin vers le debut pour garder les positions valides
     let result = paraXml;
-    kept.sort((x, y) => y.a - x.a);
-    for (const it of kept) {
+    applyIslands.sort((x, y) => y.a - x.a);
+    for (const it of applyIslands) {
       result = spliceRange(result, combined, it.a, it.b, it.ins, changeId, date);
     }
     return result;
