@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import JSZip from "jszip";
 
 // ── PALETTE ──
@@ -14,41 +14,9 @@ const C = {
   border:"#d8d3c8", border2:"#c8c3b8",
 };
 
-const CONSIGNES_2025 = [
-  // FORME
-  {id:"F-01",code:"F-01",doctype:"cp_fr",category:"FORME",label:"Formule d'ouverture",text:"Formule canonique : « Conformément à l'article 13 de la loi n°104-12 relative à la liberté des prix et de la concurrence et l'article 10 du décret n° 2-14-652 pris pour son application, tels qu'ils ont été modifiés et complétés, le Conseil de la Concurrence met à la disposition du public le « résumé de l'opération » ci-dessous, contenant les renseignements communiqués par les parties. »",examples:"✗ tels qu'ils sont modifiés → ✓ tels qu'ils ont été modifiés et complétés\n✗ le Conseil de la concurrence → ✓ le Conseil de la Concurrence (C majuscule)\n✗ telle que modifiée → ✓ tels qu'ils ont été modifiés (accord pluriel)",notes:"Art. 13 loi n°104-12 / Art. 10 décret n°2-14-652",created:"2026-04-27",version:"1.0"},
-  {id:"F-02",code:"F-02",doctype:"cp_fr",category:"FORME",label:"Responsabilité des parties",text:"Phrase de responsabilité : « Ces informations ont été élaborées par les parties notifiantes, qui en sont seules responsables. Les renseignements inexacts ou dénaturés qui y figureraient ne préjugent nullement de la position du Conseil de la concurrence sur l'opération envisagée. » Si une seule partie : « par la partie notifiante, qui en est seule responsable ».",examples:"✗ qui en est seule responsable (pluriel) → ✓ qui en sont seules responsables\n✗ par la parties notifiantes → ✓ par les parties notifiantes",notes:"Formule standard — vérifier accord singulier/pluriel",created:"2026-04-27",version:"1.0"},
-  {id:"F-03",code:"F-03",doctype:"cp_fr",category:"FORME",label:"Clause de complétude du dossier",text:"Clause obligatoire : « La publication de ce communiqué n'atteste pas de la complétude du dossier prévue à l'article 9 du décret n°2-14-652 pris pour l'application de la loi n°104-12 sur la liberté des prix et de la concurrence tels qu'ils ont été modifiés et complétés. »",examples:"✗ pris pour son application → ✓ pris pour l'application de la loi n°104-12\n✗ tels qu'ils sont modifiés → ✓ tels qu'ils ont été modifiés et complétés",notes:"Art. 9 décret n°2-14-652",created:"2026-04-27",version:"1.0"},
-  {id:"F-04",code:"F-04",doctype:"cp_fr",category:"FORME",label:"Désignation de l'institution",text:"Toujours « Conseil de la Concurrence » avec deux C majuscules dans le corps du communiqué. Exception tolérée en minuscules dans les références légales (ex: « position du Conseil de la concurrence »). Majuscules obligatoires dans les titres.",examples:"✗ Conseil de la concurrence a reçu → ✓ Conseil de la Concurrence a reçu\n✗ conseil de la Concurrence → ✓ Conseil de la Concurrence",notes:"Dénomination officielle — loi n°20-13",created:"2026-04-27",version:"1.0"},
-  {id:"F-05",code:"F-05",doctype:"cp_fr",category:"FORME",label:"Guillemets et typographie",text:"Utiliser les guillemets français « … » avec espaces insécables pour toutes les dénominations sociales, termes juridiques cités et le « résumé de l'opération ». Ne pas utiliser les guillemets droits anglais.",examples:"✗ Société X SA (guillemets droits) → ✓ « Société X SA » (guillemets français)\n✗ le résumé de l'opération → ✓ le « résumé de l'opération »",notes:"Typographie française officielle",created:"2026-04-27",version:"1.0"},
-  {id:"F-06",code:"F-06",doctype:"cp_fr",category:"FORME",label:"Structure du titre",text:"Titre standard : « Communiqué du Conseil de la Concurrence relatif au projet de concentration économique concernant [description] ». Variante admise pour JV : « …concernant la création de l'entreprise commune… »",examples:"✗ Communiqué du Conseil de la concurrence relatif à la concentration → ✓ relatif au projet de concentration économique\n✗ Communiqué relatif au projet de concentration relatif à → ✓ supprimer la redondance",notes:"Structure standard CP 2025",created:"2026-04-27",version:"1.0"},
-  // FOND
-  {id:"D-01",code:"D-01",doctype:"cp_fr",category:"FOND",label:"Nature — contrôle exclusif",text:"Pour contrôle exclusif : dans tableau « Prise du contrôle exclusif » ; dans résumé « prise du contrôle exclusif par [acquéreur] de [cible] ». Jamais « Prise de contrôle exclusif » sans « du ».",examples:"✗ Prise de contrôle exclusif → ✓ Prise du contrôle exclusif\n✗ acquisition du contrôle exclusif → ✓ prise du contrôle exclusif (terme consacré)\n✗ la prise de le contrôle → ✓ la prise du contrôle",notes:"Art. 11 loi n°104-12 — formule consacrée dans tous CP 2025",created:"2026-04-27",version:"1.0"},
-  {id:"D-02",code:"D-02",doctype:"cp_fr",category:"FOND",label:"Nature — contrôle conjoint / JV",text:"Pour contrôle conjoint : « Prise du contrôle conjoint » dans tableau. Pour JV : « Création d'entreprise commune » (sans article). Dans résumé : « prise du contrôle conjoint par [acquéreur] de [cible] aux côtés de [associé] ».",examples:"✗ Prise de contrôle conjoint → ✓ Prise du contrôle conjoint\n✗ Création de l'entreprise commune → ✓ Création d'entreprise commune",notes:"Art. 11 loi n°104-12",created:"2026-04-27",version:"1.0"},
-  {id:"D-03",code:"D-03",doctype:"cp_fr",category:"FOND",label:"Désignation des parties dans tableau",text:"Dans le tableau utiliser : « L'acquéreur » / « La cible » / « L'acquéreur direct » / « L'acquéreur indirect » / « La société fondatrice n°1/2 » (JV) / « L'entreprise commune » (JV). Toujours suivi de : la société « Nom SA ».",examples:"✗ L'Acquéreur : la société X → ✓ L'acquéreur : la société « X »\n✗ Cible : Y → ✓ La cible : la société « Y »\n✗ Acquéreur direct: X → ✓ L'acquéreur direct : la société « X »",notes:"Structure standard CP 2025",created:"2026-04-27",version:"1.0"},
-  {id:"D-04",code:"D-04",doctype:"cp_fr",category:"FOND",label:"Description juridique des sociétés",text:"À la première mention de chaque partie : 1) Forme juridique 2) Droit applicable (« de droit marocain », « de droit français »…) 3) Siège social 4) Numéro RC. Formule : « est une société anonyme de droit marocain, immatriculée au Registre du Commerce de [ville] sous le numéro [X], dont le siège social est situé à [adresse]. »",examples:"✗ société anonyme marocaine → ✓ société anonyme de droit marocain\n✗ dont le siège est à Casablanca → ✓ dont le siège social est situé à [adresse complète], Casablanca",notes:"Usage constant dans tous les CP 2025",created:"2026-04-27",version:"1.0"},
-  {id:"D-05",code:"D-05",doctype:"cp_fr",category:"FOND",label:"Formule du résumé non confidentiel",text:"Le résumé commence par : « Le Conseil de la Concurrence a reçu la notification d'une opération de concentration économique concernant… » ou « …d'un projet de concentration économique consistant en… ». Ne pas cumuler « opération de » et « projet de ».",examples:"✗ notification d'une opération de projet de concentration → ✓ notification d'une opération de concentration\n✗ notification d'un projet d'opération → ✓ notification d'un projet de concentration économique",notes:"Structure standard résumé CP 2025",created:"2026-04-27",version:"1.0"},
-  {id:"D-06",code:"D-06",doctype:"cp_fr",category:"FOND",label:"Délai d'observations des tiers",text:"Formule obligatoire : « Délai dans lequel les tiers intéressés sont invités à faire connaître leurs observations : - 10 jours à partir de la date de publication du présent communiqué, soit le [date J+10]. »",examples:"✗ Délai d'observations : 10 jours → ✓ Délai dans lequel les tiers intéressés sont invités à faire connaître leurs observations\n✗ les tiers intéressées → ✓ les tiers intéressés (accord masculin)",notes:"Art. 13 loi n°104-12",created:"2026-04-27",version:"1.0"},
-  {id:"D-07",code:"D-07",doctype:"cp_fr",category:"FOND",label:"Intitulé du résumé non confidentiel",text:"L'intitulé doit être en majuscules : « RÉSUMÉ NON CONFIDENTIEL DE L'OPÉRATION FOURNI PAR LES PARTIES ». Avec accents. Sans guillemets.",examples:"✗ RESUME NON CONFIDENTIEL DE L'OPERATION → ✓ RÉSUMÉ NON CONFIDENTIEL DE L'OPÉRATION (avec accents)\n✗ Résumé non confidentiel → ✓ RÉSUMÉ NON CONFIDENTIEL (en majuscules)",notes:"Standard typographique — tous CP 2025",created:"2026-04-27",version:"1.0"},
-  // ARABE
-  {id:"A-01",code:"A-01",doctype:"cp_ar",category:"FORME",label:"الصيغة الافتتاحية",text:"الصيغة الثابتة : « طبقا للمادة 13 من القانون رقم 104.12 المتعلق بحرية الأسعار والمنافسة والمادة 10 من المرسوم التطبيقي رقم 2.14.652 كما تم تغييرهما و تتميمهما، يضع مجلس المنافسة رهن إشارة العموم «ملخص العملية» أدناه والذي يتضمن المعلومات الموجهة من قبل الأطراف. »",examples:"✗ كما تم تعديلهما → ✓ كما تم تغييرهما و تتميمهما\n✗ يضع المجلس → ✓ يضع مجلس المنافسة (بدون أداة التعريف)",notes:"المادة 13 / المرسوم 2.14.652",created:"2026-04-27",version:"1.0"},
-  {id:"A-02",code:"A-02",doctype:"cp_ar",category:"FORME",label:"صيغة المسؤولية",text:"الصيغة الثابتة : « وقد تم إعداد هذه المعلومات من قبل الأطراف المبلغة التي تعتبر وحدها المسؤولة عنها، ذلك أن كل المعلومات، الخاطئة أو غير الصحيحة، التي قد تشتمل عليها لا تعبر بتاتا عن موقف مجلس المنافسة حول العملية المرتقبة. »",examples:"✗ من قبل الطرف المبلغ (عند تعدد الأطراف) → ✓ من قبل الأطراف المبلغة",notes:"صيغة قياسية",created:"2026-04-27",version:"1.0"},
-  {id:"A-03",code:"A-03",doctype:"cp_ar",category:"FORME",label:"صيغة اكتمال الملف",text:"الصيغة الثابتة : « إن نشر هذا البلاغ لا يفيد بأن ملف التبليغ يعتبر كاملا طبقا لأحكام المادة 9 من المرسوم رقم 2.14.652 الصادر بتطبيق القانون رقم 104.12 المتعلق بحرية الأسعار والمنافسة، كما تم تغييرهما و تتميمهما. »",examples:"✗ البلاغ / الإعلان → ✓ البلاغ (الاستخدام المعياري)",notes:"المادة 9 من المرسوم 2.14.652",created:"2026-04-27",version:"1.0"},
-  {id:"A-04",code:"A-04",doctype:"cp_ar",category:"FOND",label:"طبيعة العملية — مراقبة حصرية",text:"الصياغة المعيارية في الجدول : « تولي المراقبة الحصرية ». في الملخص : « تولي [الجهة المقتنية] المراقبة الحصرية على [الجهة المستهدفة] عبر اقتناء [النسبة]% من رأسمالها وحقوق التصويت المرتبطة به ».",examples:"✗ الاستحواذ الحصري → ✓ تولي المراقبة الحصرية\n✗ السيطرة المطلقة → ✓ المراقبة الحصرية",notes:"المادة 11 من القانون 104.12 — المصطلح المعتمد",created:"2026-04-27",version:"1.0"},
-  {id:"A-05",code:"A-05",doctype:"cp_ar",category:"FOND",label:"تسمية الأطراف",text:"الجهة المقتنية (لا المستحوذ / لا المشتري). الجهة المستهدفة (لا الشركة المستهدفة). المؤسسة المشتركة لعملية JV. توصل مجلس المنافسة بتبليغ مشروع عملية تركيز اقتصادي (لا استقبل / لا تلقى).",examples:"✗ المستحوذ / المشتري → ✓ الجهة المقتنية\n✗ الشركة المستهدفة → ✓ الجهة المستهدفة\n✗ استقبل المجلس → ✓ توصل مجلس المنافسة بتبليغ",notes:"المصطلحات الرسمية المعتمدة — بلاغات 2025",created:"2026-04-27",version:"1.0"},
-  {id:"A-06",code:"A-06",doctype:"cp_ar",category:"FOND",label:"الأجل والتاريخ",text:"الصيغة المعيارية : « الأجل المحدد للأغيار المعنيين من أجل إبداء ملاحظاتهم : - 10 أيام ابتداء من تاريخ نشر هذا البلاغ، وينتهي هذا الأجل يوم [التاريخ]. »",examples:"✗ الأطراف الثالثة → ✓ الأغيار المعنيون (المصطلح المعتمد)\n✗ مدة الاعتراض → ✓ الأجل المحدد للأغيار المعنيين",notes:"المادة 13 من القانون 104.12",created:"2026-04-27",version:"1.0"},
-  {id:"A-07",code:"A-07",doctype:"cp_ar",category:"FOND",label:"الوصف القانوني للشركات",text:"عند الإشارة الأولى لكل طرف : 1) الشكل القانوني 2) القانون المنظم (خاضعة للقانون المغربي / الفرنسي...) 3) المقر الاجتماعي 4) رقم السجل التجاري. الصيغة : « هي شركة [الشكل] خاضعة للقانون [الدولة]، يقع مقرها الاجتماعي ب[المدينة]. »",examples:"✗ شركة مغربية → ✓ شركة خاضعة للقانون المغربي",notes:"الاستخدام الثابت في بلاغات 2025",created:"2026-04-27",version:"1.0"},
-  // TERMINOLOGIE
-  {id:"T-01",code:"T-01",doctype:"bilingue",category:"TERMINOLOGIE",label:"Terminologie contrôle FR↔AR",text:"Correspondances officielles :\ncontrôle exclusif ↔ المراقبة الحصرية\ncontrôle conjoint ↔ المراقبة المشتركة\ncontrôle indirect ↔ المراقبة غير المباشرة\nprise de contrôle ↔ تولي المراقبة\nl'acquéreur ↔ الجهة المقتنية\nla cible ↔ الجهة المستهدفة\nles parties notifiantes ↔ الأطراف المبلغة\nentreprise commune ↔ مشروع مشترك",examples:"Vérifier la cohérence de chaque terme entre les deux versions",notes:"Glossaire officiel Conseil de la Concurrence 2025",created:"2026-04-27",version:"1.0"},
-  {id:"T-02",code:"T-02",doctype:"bilingue",category:"TERMINOLOGIE",label:"Formes juridiques FR↔AR",text:"Correspondances officielles :\nsociété anonyme (SA) ↔ شركة مساهمة\nsociété à responsabilité limitée (SARL) ↔ شركة ذات المسؤولية المحدودة\nsociété par actions simplifiée (SAS) ↔ شركة أسهم مبسطة\nde droit marocain ↔ خاضعة للقانون المغربي\nde droit français ↔ خاضعة للقانون الفرنسي\ncapital social ↔ رأس المال الاجتماعي\ndroits de vote ↔ حقوق التصويت\nRegistre du Commerce ↔ السجل التجاري",examples:"Vérifier l'exactitude de la traduction de la forme juridique pour chaque société",notes:"Terminologie juridique standard",created:"2026-04-27",version:"1.0"},
-  {id:"T-03",code:"T-03",doctype:"bilingue",category:"TERMINOLOGIE",label:"Formules procédurales FR↔AR",text:"Correspondances officielles :\nnotification ↔ تبليغ\ntiers intéressés ↔ الأغيار المعنيون\nobservations ↔ ملاحظات\ncomplétude du dossier ↔ اكتمال الملف\nrésumé non confidentiel ↔ ملخص غير سري\nsecteurs économiques concernés ↔ القطاعات الاقتصادية المعنية\nsiège social ↔ المقر الاجتماعي\nFait à Rabat, le [date] ↔ حرر في الرباط بتاريخ [التاريخ]",examples:"Vérifier la cohérence des formules procédurales entre les deux versions",notes:"Formules procédurales standard CP 2025",created:"2026-04-27",version:"1.0"},
-  // BILINGUE
-  {id:"B-01",code:"B-01",doctype:"bilingue",category:"BILINGUE",label:"Cohérence chiffres et pourcentages",text:"Les chiffres (pourcentages, capitaux, numéros RC) doivent être identiques dans FR et AR. Pourcentages : même format. Capital social : même montant. Numéro RC : même numéro et format. Dates : cohérence J+10 entre les deux versions.",examples:"✗ FR : 42,11% / AR : 42% → ✓ FR et AR : 42,11% (identiques)\n✗ FR : RC 181.559 / AR : RC 181559 → ✓ Uniformiser le format",notes:"Vérification croisée systématique",created:"2026-04-27",version:"1.0"},
-  {id:"B-02",code:"B-02",doctype:"bilingue",category:"BILINGUE",label:"Cohérence qualification de l'opération",text:"La nature de l'opération doit être identique dans FR et AR. Prise du contrôle exclusif ↔ تولي المراقبة الحصرية. Prise du contrôle conjoint ↔ تولي المراقبة المشتركة. Création d'entreprise commune ↔ إنشاء مشروع مشترك.",examples:"✗ FR : contrôle exclusif / AR : مراقبة مشتركة → ✓ Cohérence obligatoire entre les deux versions",notes:"Cohérence bilingue obligatoire",created:"2026-04-27",version:"1.0"},
-  {id:"B-03",code:"B-03",doctype:"bilingue",category:"BILINGUE",label:"Cohérence date de clôture",text:"La date limite des observations doit être la même dans FR et AR, et correspondre à J+10 de la date de publication.",examples:"✗ FR : soit le 13 octobre 2025 / AR : 14 أكتوبر 2025 → ✓ Même date J+10 dans les deux versions",notes:"Art. 13 loi n°104-12 — délai de 10 jours",created:"2026-04-27",version:"1.0"},
-];
-
-const DEFAULT_CONSIGNES = CONSIGNES_2025;
+// Les consignes sont desormais chargees depuis le serveur (/api/consignes).
+// Cette liste locale ne sert que de repli si le serveur est injoignable.
+const DEFAULT_CONSIGNES = [];
 
 const DEMO_TEXT = `Conformément à l'article 13 de la loi n°104-12 relative à la liberté des prix et de la concurrence et l'article 10 du décret n° 2-14-652 pris pour son application, tels qu'ils ont été modifiés et complétés, le Conseil de la Concurence dsdmet à la disposition du public le « résumé de l'opération » ci-dessous.
 
@@ -395,7 +363,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
       <PageHeader
         title="Corriger un document"
         sub="Upload · Analyse Claude · Téléchargement Word avec suivi des modifications"
-        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>Fiche v1.0 active</span>}
+        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>{consignes.length} consignes actives</span>}
       />
 
       {error && <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf0f0",border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12.5,color:C.red}}>{error}</div>}
@@ -526,7 +494,7 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
               </Card>
 
               <button onClick={downloadWord} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                <span>📥</span> Télécharger Word (.doc) avec corrections
+                <span>📥</span> Télécharger Word (.docx) avec corrections
               </button>
             </div>
           )}
@@ -659,13 +627,16 @@ function FSel({label, field, opts, form, setForm}) {
 const CODE_PREFIX = {FORME:"F",FOND:"D",TERMINOLOGIE:"T",BILINGUE:"B"};
 
 // ── CONSIGNES ──
-function ConsignesPage({consignes, setConsignes}) {
+function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) {
   const [selected, setSelected] = useState(null);
   const [filterType, setFilterType] = useState("");
   const [filterCat, setFilterCat] = useState("");
   const [form, setForm] = useState({});
   const [isNew, setIsNew] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [adminToken, setAdminToken] = useState("");
+  const [serverMsg, setServerMsg] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const filtered = consignes.filter(c => (!filterType||c.doctype===filterType) && (!filterCat||c.category===filterCat));
   const selC = selected ? consignes.find(c => c.id===selected) : null;
@@ -683,7 +654,7 @@ function ConsignesPage({consignes, setConsignes}) {
     const cat = "FORME";
     const code = autoCode(cat, consignes);
     setSelected(null); setIsNew(true); setSaved(false);
-    setForm({code, id:code, doctype:"cp_fr", category:cat, label:"", text:"", examples:"", notes:"", version:"1.0"});
+    setForm({code, id:code, doctype:"cp_fr", category:cat, mode:"claude", scope:["tout"], active:true, regex:null, label:"", text:"", examples:"", notes:"", version:"1.0"});
   };
 
   const save = () => {
@@ -711,7 +682,31 @@ function ConsignesPage({consignes, setConsignes}) {
     setSelected(nc.id); setForm({...nc}); setIsNew(false);
   };
 
+  const saveToServer = async () => {
+    if (!adminToken) { setServerMsg("Saisissez d'abord le mot de passe administrateur."); return; }
+    setBusy(true); setServerMsg("Enregistrement sur le serveur…");
+    try {
+      const r = await onSaveServer(consignes, adminToken);
+      setServerMsg(`✓ Enregistré sur le serveur (${r.count} consignes)`);
+      setTimeout(() => setServerMsg(""), 4000);
+    } catch (e) {
+      setServerMsg("Erreur : " + e.message);
+    }
+    setBusy(false);
+  };
 
+  const reloadFromServer = async () => {
+    setBusy(true); setServerMsg("Rechargement depuis le serveur…");
+    try {
+      await onReloadServer();
+      setSelected(null); setIsNew(false);
+      setServerMsg("✓ Liste rechargée depuis le serveur");
+      setTimeout(() => setServerMsg(""), 3000);
+    } catch (e) {
+      setServerMsg("Erreur : " + e.message);
+    }
+    setBusy(false);
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
@@ -719,13 +714,19 @@ function ConsignesPage({consignes, setConsignes}) {
         title="Fiches de consignes"
         sub={`Règles de correction par type de document — ${consignes.length} consignes`}
         right={
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={() => {
-              if(window.confirm(`Importer les ${CONSIGNES_2025.length} fiches officielles 2025 ? Les consignes existantes seront remplacées.`)) {
-                setConsignes(CONSIGNES_2025.map(c => ({...c, created: new Date().toLocaleDateString("fr-FR")})));
-              }
-            }} style={{padding:"7px 14px",border:`1px solid ${C.gold}`,borderRadius:7,background:"#fdf5e0",color:C.amber,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              ⬇ Fiches 2025
+          <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
+            <input
+              type="password"
+              value={adminToken}
+              onChange={e => setAdminToken(e.target.value)}
+              placeholder="Mot de passe admin"
+              style={{padding:"7px 10px",border:`1px solid ${C.border2}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text,width:160}}
+            />
+            <button onClick={saveToServer} disabled={busy} style={{padding:"7px 14px",border:"none",borderRadius:7,background:busy?"#9ca3af":C.green,color:"#fff",fontSize:12.5,fontWeight:500,cursor:busy?"not-allowed":"pointer"}}>
+              💾 Enregistrer sur le serveur
+            </button>
+            <button onClick={reloadFromServer} disabled={busy} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:busy?"not-allowed":"pointer"}}>
+              ↻ Recharger
             </button>
             <button onClick={() => {
               const input = document.createElement("input");
@@ -737,7 +738,7 @@ function ConsignesPage({consignes, setConsignes}) {
                   const data = JSON.parse(text);
                   const fiches = data.consignes || data;
                   if (!Array.isArray(fiches)) throw new Error("Format invalide");
-                  if (!window.confirm(`Importer ${fiches.length} fiches depuis le fichier JSON ?\nLes consignes existantes seront remplacées.`)) return;
+                  if (!window.confirm(`Importer ${fiches.length} fiches depuis le fichier JSON ?\nElles remplaceront la liste actuelle (pensez ensuite à Enregistrer sur le serveur).`)) return;
                   setConsignes(fiches);
                 } catch(err) {
                   alert("Erreur : " + err.message);
@@ -748,7 +749,7 @@ function ConsignesPage({consignes, setConsignes}) {
               📂 Importer JSON
             </button>
             <button onClick={() => {
-              const data = JSON.stringify({version:"1.0",source:"OCE Platform",created:new Date().toLocaleDateString("fr-FR"),count:consignes.length,consignes}, null, 2);
+              const data = JSON.stringify({version:"3.0",source:"OCE Platform",created:new Date().toLocaleDateString("fr-FR"),count:consignes.length,consignes}, null, 2);
               const blob = new Blob([data], {type:"application/json"});
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
@@ -761,6 +762,7 @@ function ConsignesPage({consignes, setConsignes}) {
           </div>
         }
       />
+      {serverMsg && <div style={{margin:"10px 30px 0",padding:"8px 14px",background:serverMsg.startsWith("Erreur")?C.redLight:C.greenLight,border:`1px solid ${serverMsg.startsWith("Erreur")?"#f5b7b7":"#a7d7b7"}`,borderRadius:8,fontSize:12.5,color:serverMsg.startsWith("Erreur")?C.red:C.green}}>{serverMsg}</div>}
       <div style={{flex:1,padding:"18px 30px",overflow:"hidden",display:"grid",gridTemplateColumns:"255px 1fr",gap:14}}>
         {/* Liste */}
         <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -776,10 +778,10 @@ function ConsignesPage({consignes, setConsignes}) {
           </div>
           <div style={{overflowY:"auto",flex:1}}>
             {filtered.map(c => (
-              <div key={c.id} onClick={() => selectC(c)} style={{padding:"8px 12px",borderBottom:`1px solid ${C.cream2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:7,background:selected===c.id?"#edf2ff":"#fff",borderLeft:selected===c.id?`3px solid ${C.navy2}`:"3px solid transparent",transition:"all .1s"}}>
+              <div key={c.id} onClick={() => selectC(c)} style={{padding:"8px 12px",borderBottom:`1px solid ${C.cream2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:7,background:selected===c.id?"#edf2ff":"#fff",borderLeft:selected===c.id?`3px solid ${C.navy2}`:"3px solid transparent",opacity:c.active===false?.5:1,transition:"all .1s"}}>
                 <span style={{fontSize:9.5,fontWeight:600,color:C.text3,minWidth:32,fontFamily:"monospace"}}>{c.code}</span>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:11,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}</div>
+                  <div style={{fontSize:11,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}{c.active===false?" (inactive)":""}</div>
                   <div style={{fontSize:9.5,color:C.text3,marginTop:1}}>{TYPE_LABELS[c.doctype]||c.doctype}</div>
                 </div>
                 <span style={{background:CAT_BG[c.category]||"#f0f0f0",color:CAT_FG[c.category]||"#555",padding:"1px 5px",borderRadius:20,fontSize:8,fontWeight:600,flexShrink:0}}>{c.category}</span>
@@ -802,8 +804,12 @@ function ConsignesPage({consignes, setConsignes}) {
               <div style={{display:"flex",alignItems:"center",gap:9,paddingBottom:12,borderBottom:`1px solid ${C.cream2}`}}>
                 <div style={{flex:1,fontSize:13,fontWeight:500,color:C.navy2}}>{isNew ? "Nouvelle consigne" : `Consigne ${selC?.code}`}</div>
                 {!isNew && <span style={{fontSize:9.5,padding:"2px 7px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>v{selC?.version}</span>}
-                {saved && <span style={{fontSize:10,color:C.green,fontWeight:500}}>✓ Enregistré</span>}
-                <button onClick={save} style={{padding:"5px 13px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Enregistrer</button>
+                <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:C.text2,cursor:"pointer"}}>
+                  <input type="checkbox" checked={form.active!==false} onChange={e => setForm(f => ({...f,active:e.target.checked}))}/>
+                  Active
+                </label>
+                {saved && <span style={{fontSize:10,color:C.green,fontWeight:500}}>✓ Enregistré (local)</span>}
+                <button onClick={save} style={{padding:"5px 13px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Appliquer</button>
                 {!isNew && <button onClick={dup} style={{padding:"5px 11px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:11,cursor:"pointer",color:C.text2}}>Dupliquer</button>}
                 {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red}}>Supprimer</button>}
               </div>
@@ -825,7 +831,10 @@ function ConsignesPage({consignes, setConsignes}) {
               <FInput label="Description / règle complète" field="text" ph="Décrire la règle de correction, les formulations correctes, les erreurs à détecter…" area={4} form={form} setForm={setForm}/>
               <FInput label="Exemples (incorrect → correct)" field="examples" ph="Incorrect : xxx → Correct : yyy" area={3} form={form} setForm={setForm}/>
               <FInput label="Notes / source" field="notes" ph="ex : Article 13 loi n°104-12" form={form} setForm={setForm}/>
-              {!isNew && <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>Créé le {selC?.created} · Version {selC?.version}</div>}
+              <div style={{fontSize:10.5,color:C.text3,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>
+                Après « Appliquer », cliquez sur « Enregistrer sur le serveur » (en haut) pour rendre vos changements permanents. Sinon ils restent dans cette session seulement.
+              </div>
+              {!isNew && <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>Créé le {selC?.created} · Version {selC?.version} · Mode {selC?.mode||"claude"}</div>}
             </>
           )}
         </div>
@@ -890,6 +899,30 @@ export default function App() {
   const [consignes, setConsignes] = useState(DEFAULT_CONSIGNES);
   const [history, setHistory] = useState([]);
 
+  // Charge les consignes depuis le serveur au demarrage (source unique).
+  const loadConsignes = async () => {
+    const r = await fetch("/api/consignes");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    if (Array.isArray(d.consignes)) setConsignes(d.consignes);
+  };
+
+  useEffect(() => {
+    loadConsignes().catch(e => console.warn("Consignes : lecture serveur impossible, repli local.", e));
+  }, []);
+
+  // Enregistre la liste complete sur le serveur (protege par mot de passe admin).
+  const saveConsignesToServer = async (liste, jeton) => {
+    const r = await fetch("/api/consignes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-token": jeton },
+      body: JSON.stringify({ consignes: liste }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+    return d;
+  };
+
   return (
     <>
       <style>{`
@@ -906,7 +939,7 @@ export default function App() {
           {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="historique"    && <HistoriquePage history={history}/>}
           {page==="dashboard"     && <DashboardPage history={history}/>}
-          {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignes}/>}
+          {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignes} onSaveServer={saveConsignesToServer} onReloadServer={loadConsignes}/>}
           {page==="utilisateurs"  && <UtilisateursPage/>}
         </main>
       </div>
