@@ -115,29 +115,33 @@ function SLabel({children}) {
 // localiser une correction meme si l'espacement differe legerement.
 function buildNormMap(s) {
   const isWs = ch => ch === " " || ch === "\t" || ch === "\u00a0" || ch === "\u202f" || ch === "\u2009" || ch === "\f" || ch === "\u000b";
+  const isApos = ch => ch === "\u0027" || ch === "\u2019" || ch === "\u02bc" || ch === "\uff07" || ch === "\u2018";
   let norm = "", map = [], i = 0;
   while (i < s.length) {
     if (isWs(s[i])) { norm += " "; map.push(i); i++; while (i < s.length && isWs(s[i])) i++; }
+    else if (isApos(s[i])) { norm += "'"; map.push(i); i++; }
     else { norm += s[i]; map.push(i); i++; }
   }
   map.push(s.length);
   return { norm, map };
 }
-function normSpaces(s) { return s.replace(/[ \t\u00a0\u202f\u2009\f\u000b]+/g, " "); }
+function normSpaces(s) { return s.replace(/[ \t\u00a0\u202f\u2009\f\u000b]+/g, " ").replace(/[\u0027\u2019\u02bc\uff07\u2018]/g, "'"); }
 
 // Diff caractere par caractere (LCS) entre le texte original et la correction.
 // Renvoie des "ilots" minimaux : seules les parties reellement modifiees, pour
 // que la revision ne barre pas la phrase entiere mais juste le mot touche.
 function diffIslands(a, b) {
+  const isApos = c => c === "\u0027" || c === "\u2019" || c === "\u02bc" || c === "\uff07" || c === "\u2018";
+  const eq = (x, y) => x === y || (isApos(x) && isApos(y));
   const n = a.length, m = b.length;
   const dp = [];
   for (let i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
   for (let i = n - 1; i >= 0; i--)
     for (let j = m - 1; j >= 0; j--)
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      dp[i][j] = eq(a[i], b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
   let i = 0, j = 0; const ops = [];
   while (i < n && j < m) {
-    if (a[i] === b[j]) { ops.push([0, a[i]]); i++; j++; }
+    if (eq(a[i], b[j])) { ops.push([0, a[i]]); i++; j++; }
     else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push([1, a[i]]); i++; }
     else { ops.push([2, b[j]]); j++; }
   }
