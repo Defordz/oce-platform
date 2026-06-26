@@ -237,102 +237,21 @@ function CorrectionPage({consignes, history, setHistory}) {
     }
 
     const text = fileContent || DEMO_TEXT;
-    const activeOpts = Object.entries(opts).filter(([,v]) => v).map(([k]) => k).join(", ");
-
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      setError("Clé API manquante. Ajoutez VITE_ANTHROPIC_API_KEY dans les variables d'environnement Vercel.");
-      setPhase("idle");
-      return;
-    }
-
-    const consignesText = consignes
-      .filter(c => c.doctype === docType || c.doctype === "bilingue" || c.doctype === "tous")
-      .map(c => `[${c.code}] ${c.label}: ${c.text.substring(0,150)}`)
-      .join("\n");
-
-    const formeInstructions = opts.forme ? `
-CORRECTIONS DE FORME (OBLIGATOIRE - cherche toutes les erreurs suivantes):
-- Fautes d'orthographe: mots mal écrits, lettres manquantes ou en trop (ex: "dsd", "pds" insérés dans les mots)
-- Mots parasites insérés dans d'autres mots (ex: "dsdmet" → "met", "pdsour" → "pour", "indstéressés" → "intéressés")
-- Erreurs de frappe évidentes
-- Problèmes de typographie (guillemets, espaces)
-- Majuscules manquantes ou incorrectes
-` : "";
-
-    const fondInstructions = opts.fond ? `
-CORRECTIONS DE FOND (OBLIGATOIRE - cherche toutes les erreurs suivantes):
-- Formulations juridiques incorrectes selon la loi n°104-12
-- Structure du document non conforme
-- Qualifications juridiques erronées (ex: "opération de projet de concentration" → "opération de concentration")
-- Références légales incorrectes
-- Incohérences dans la désignation des parties
-` : "";
-
-    const terminologieInstructions = opts.terminologie ? `
-TERMINOLOGIE (cherche les termes non conformes):
-${consignesText}
-` : "";
-
-    const prompt = `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
-Tu dois analyser le document et trouver TOUTES les erreurs présentes.
-
-Type de document: ${docType}
-
-${formeInstructions}
-${fondInstructions}
-${terminologieInstructions}
-
-DOCUMENT À CORRIGER:
-${text.substring(0, 12000)}${text.length > 12000 ? "...[tronqué]" : ""}
-
-RÈGLES IMPORTANTES:
-- Le champ "original" doit contenir EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot
-- Le document conserve les sauts de ligne entre les sections : le champ "original" doit être un extrait situé sur UNE SEULE ligne, jamais à cheval sur deux lignes
-- Le champ "suggested" contient la correction
-- Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
-- Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
-- Ne pas inventer des erreurs qui n'existent pas
-
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
-{
-  "corrections": [
-    {
-      "type": "forme|fond|terminologie|bilingue",
-      "code": "F-01 ou vide si pas de consigne applicable",
-      "original": "texte exact du document avec l'erreur",
-      "suggested": "texte corrigé",
-      "reason": "explication courte"
-    }
-  ],
-  "synthese": "résumé de l'analyse en 2-3 phrases",
-  "score": 7
-}`;
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      // La cle Anthropic reste cote serveur : on passe par /api/analyze.
+      const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-5",
-          max_tokens: 4000,
-          messages: [{ role: "user", content: prompt }],
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, docType, opts, consignes }),
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || `HTTP ${res.status}`);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
       }
 
-      const data = await res.json();
-      const raw = data.content[0].text.trim().replace(/^```[\s\S]*?\n/,"").replace(/```[\s]*$/,"").trim();
-      const parsed = JSON.parse(raw);
+      const parsed = await res.json();
 
       setCorrections(parsed.corrections || []);
       setSynthese(parsed.synthese || "");
