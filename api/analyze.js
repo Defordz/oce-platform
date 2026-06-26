@@ -1,96 +1,144 @@
-// api/analyze.js — Passe 1 : Claude détecte les problèmes
-// Passe 2 (application via regex) est dans App.jsx
+// api/analyze.js
+// Analyse d'un document via Claude, cote SERVEUR.
+// Remplace l'appel direct a api.anthropic.com qui exposait la cle dans le navigateur.
+// La cle ANTHROPIC_API_KEY ne quitte jamais le serveur ; le prompt est construit ici.
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
+const MODEL = 'claude-opus-4-5';      // identifiant centralise (a revoir en phase finitions)
+const MAX_TOKENS = 4000;
+const MAX_DOC_CHARS = 12000;
+
+function setCors(res) {
+  // CORS restreint au domaine de production (ALLOWED_ORIGIN), jamais '*'.
+  if (ALLOWED_ORIGIN) res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+}
 
-  const { text, docType, consignes, activeOpts } = req.body;
-  if (!text) return res.status(400).json({ error: 'text requis' });
+function buildPrompt({ text, docType, opts, consignes }) {
+  const consignesText = (Array.isArray(consignes) ? consignes : [])
+    .filter(c => c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous')
+    .map(c => `[${c.code}] ${c.label}: ${String(c.text || '').substring(0, 150)}`)
+    .join('\n');
 
-  const typeLabel = {
-    cp_fr: 'communiqué de presse en français relatif à une opération de concentration économique',
-    cp_ar: 'بلاغ صحفي بالعربية متعلق بعملية التركيز الاقتصادي',
-    bilingue: 'document bilingue FR/AR',
-    decision_ar: 'قرار مجلس المنافسة بالعربية',
-  }[docType] || 'document juridique';
+  const formeInstructions = opts && opts.forme ? `
+CORRECTIONS DE FORME (OBLIGATOIRE - cherche toutes les erreurs suivantes):
+- Fautes d'orthographe: mots mal écrits, lettres manquantes ou en trop (ex: "dsd", "pds" insérés dans les mots)
+- Mots parasites insérés dans d'autres mots (ex: "dsdmet" → "met", "pdsour" → "pour", "indstéressés" → "intéressés")
+- Erreurs de frappe évidentes
+- Problèmes de typographie (guillemets, espaces)
+- Majuscules manquantes ou incorrectes
+` : '';
 
-  const allConsignes = (consignes || []).filter(c => c.doctype === docType || c.doctype === 'tous');
-  const withRegex    = allConsignes.filter(c => c.regex !== null && c.regex !== undefined);
-  const withoutRegex = allConsignes.filter(c => c.regex === null || c.regex === undefined);
+  const fondInstructions = opts && opts.fond ? `
+CORRECTIONS DE FOND (OBLIGATOIRE - cherche toutes les erreurs suivantes):
+- Formulations juridiques incorrectes selon la loi n°104-12
+- Structure du document non conforme
+- Qualifications juridiques erronées (ex: "opération de projet de concentration" → "opération de concentration")
+- Références légales incorrectes
+- Incohérences dans la désignation des parties
+` : '';
 
-  const regexSummary = withRegex.map(c =>
-    `[${c.code}] ${c.label} — application automatique par regex`
-  ).join('\n');
+  const terminologieInstructions = opts && opts.terminologie ? `
+TERMINOLOGIE (cherche les termes non conformes):
+${consignesText}
+` : '';
 
-  const claudeSummary = withoutRegex.map(c => {
-    let e = `[${c.code}] ${c.label}: ${c.text}`;
-    if (c.examples) e += `\n   Exemples: ${c.examples}`;
-    return e;
-  }).join('\n\n');
+  const full = String(text || '');
+  const doc = full.substring(0, MAX_DOC_CHARS);
+  const truncated = full.length > MAX_DOC_CHARS ? '...[tronqué]' : '';
 
-  const systemPrompt = `Tu es rapporteur expert au Conseil de la Concurrence du Maroc.
-Analyse ce ${typeLabel}.
+  return `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
+Tu dois analyser le document et trouver TOUTES les erreurs présentes.
 
-=== CONSIGNES AUTOMATIQUES (regex) — indiquer si applicable ===
-${regexSummary || '(aucune)'}
+Type de document: ${docType}
 
-=== CONSIGNES MANUELLES — fournir texte exact du document ===
-${claudeSummary || '(aucune)'}
+${formeInstructions}
+${fondInstructions}
+${terminologieInstructions}
 
-OPTIONS : ${activeOpts || 'forme, fond, terminologie'}
+DOCUMENT À CORRIGER:
+${doc}${truncated}
 
-RÈGLES STRICTES :
-- Consignes automatiques → type="regex_auto", original="" et suggested="" vides
-- Consignes manuelles → original = texte EXACT du document avec 8-10 mots de contexte
-- Réponds UNIQUEMENT en JSON valide sans markdown
+RÈGLES IMPORTANTES:
+- Le champ "original" doit contenir EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot
+- Le document conserve les sauts de ligne entre les sections : le champ "original" doit être un extrait situé sur UNE SEULE ligne, jamais à cheval sur deux lignes
+- Le champ "suggested" contient la correction
+- Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
+- Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
+- Ne pas inventer des erreurs qui n'existent pas
 
-Format :
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 {
-  "score": <1-10>,
-  "synthese": "<2-3 phrases>",
-  "regex_applicable": ["F-12","F-13","D-05"],
   "corrections": [
-    {"type":"regex_auto","code":"F-12","original":"","suggested":"","reason":"Guillemets sans espaces"},
-    {"type":"fond","code":"D-07","original":"société anonyme au capital social","suggested":"société anonyme de droit marocain au capital social","reason":"Droit applicable manquant"}
-  ]
+    {
+      "type": "forme|fond|terminologie|bilingue",
+      "code": "F-01 ou vide si pas de consigne applicable",
+      "original": "texte exact du document avec l'erreur",
+      "suggested": "texte corrigé",
+      "reason": "explication courte"
+    }
+  ],
+  "synthese": "résumé de l'analyse en 2-3 phrases",
+  "score": 7
 }`;
+}
+
+export default async function handler(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "Configuration serveur incomplète : ANTHROPIC_API_KEY manquante côté Vercel." });
+  }
+
+  const body = req.body || {};
+  const { text, docType, opts, consignes } = body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: "Champ 'text' manquant ou invalide." });
+  }
+
+  const prompt = buildPrompt({ text, docType: docType || 'cp_fr', opts: opts || {}, consignes });
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 2000,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: `Analyse:\n\n${text.substring(0, 5000)}` }],
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        messages: [{ role: 'user', content: prompt }],
       }),
     });
 
-    if (!resp.ok) {
-      const err = await resp.text();
-      return res.status(500).json({ error: 'Erreur API Claude', detail: err });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      return res.status(502).json({ error: (err.error && err.error.message) || `Anthropic HTTP ${r.status}` });
     }
 
-    const data = await resp.json();
-    const raw = data.content.map(c => c.text || '').join('');
+    const data = await r.json();
+    const rawText = (data.content && data.content[0] && data.content[0].text) || '';
+    const raw = rawText.trim().replace(/^```[\s\S]*?\n/, '').replace(/```[\s]*$/, '').trim();
+
     let parsed;
-    try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()); }
-    catch { return res.status(500).json({ error: 'JSON invalide', raw }); }
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      return res.status(502).json({ error: "Réponse du modèle illisible (JSON invalide)." });
+    }
 
-    // Passer les consignes regex au frontend pour la Passe 2
-    parsed.regexConsignes = withRegex;
-
-    return res.status(200).json(parsed);
-  } catch (err) {
-    return res.status(500).json({ error: 'Erreur serveur', detail: err.message });
+    return res.status(200).json({
+      corrections: parsed.corrections || [],
+      synthese: parsed.synthese || '',
+      score: parsed.score,
+    });
+  } catch (e) {
+    return res.status(500).json({ error: "Erreur lors de l'analyse : " + e.message });
   }
 }
