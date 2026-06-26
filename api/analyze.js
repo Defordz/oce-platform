@@ -84,6 +84,105 @@ Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
 }`;
 }
 
+// ----------------------------------------------------------------------------
+// PASSE REGEX (deterministe)
+// Applique les consignes qui portent un tableau "regex" sur le texte extrait,
+// et produit des corrections au MEME format que celles de Claude.
+// ----------------------------------------------------------------------------
+
+function catToType(cat) {
+  switch (String(cat || '').toUpperCase()) {
+    case 'FOND': return 'fond';
+    case 'TERMINOLOGIE': return 'terminologie';
+    case 'BILINGUE': return 'bilingue';
+    default: return 'forme';
+  }
+}
+
+// Etend la correction vers la GAUCHE juste assez pour que "original" soit UNIQUE
+// dans le texte (donc unique aussi dans n'importe quel paragraphe), ce qui permet
+// au moteur (qui cherche la 1re occurrence par paragraphe) de localiser CHAQUE
+// occurrence. On ne traverse jamais un saut de ligne (donc jamais un paragraphe).
+// Exemple : cinq "... Ltd.»" deviennent "Alpha Ltd.»", "Beta Ltd.»", etc.
+function leftAnchor(text, s, matched) {
+  const occ = sub => {
+    let n = 0, i = 0;
+    while ((i = text.indexOf(sub, i)) !== -1) { n++; i += sub.length || 1; }
+    return n;
+  };
+  if (occ(matched) <= 1) return s;            // deja unique sans contexte
+  const MAX_BACK = 60;
+  let li = s;
+  while (li > 0 && (s - li) < MAX_BACK) {
+    const ch = text[li - 1];
+    if (ch === '\n' || ch === '\r') break;    // ne pas franchir un paragraphe
+    li--;
+    if (occ(text.slice(li, s) + matched) <= 1) break;
+  }
+  return li;
+}
+
+function runRegexPass({ text, docType, consignes }) {
+  const list = Array.isArray(consignes) ? consignes : [];
+  const full = String(text || '');
+  const out = [];
+  for (const c of list) {
+    if (!c || c.active === false) continue;
+    if (!Array.isArray(c.regex) || !c.regex.length) continue;
+    const applicable = c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous';
+    if (!applicable) continue;
+    const type = catToType(c.category);
+    for (const p of c.regex) {
+      if (!p || !p.find) continue;
+      let gflags = p.flags || '';
+      if (!gflags.includes('g')) gflags += 'g';
+      const sflags = gflags.replace('g', '');
+      let re, sre;
+      try { re = new RegExp(p.find, gflags); sre = new RegExp(p.find, sflags); }
+      catch (e) { continue; }
+      const repl = p.replace != null ? p.replace : '';
+      for (const m of full.matchAll(re)) {
+        const matched = m[0];
+        if (!matched) continue;
+        const replaced = matched.replace(sre, repl);
+        if (replaced === matched) continue;
+        const s = m.index;
+        const li = leftAnchor(full, s, matched);
+        const left = full.slice(li, s);
+        out.push({
+          type,
+          code: c.code || '',
+          original: left + matched,
+          suggested: left + replaced,
+          reason: (p.label || 'correction déterministe') + ' [regex ' + (c.code || '') + ']',
+          deterministic: true,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// Fusionne regex (en premier, car garanties) puis Claude, en retirant les
+// doublons exacts. Les chevauchements de plage sont geres en aval par le moteur.
+function mergeDedup(regexCorr, claudeCorr) {
+  const norm = s => String(s || '')
+    .replace(/[\u00a0\s]+/g, ' ')
+    .replace(/[\u2019\u02bc\uff07\u2018]/g, "'")
+    .trim();
+  const seen = new Set();
+  const out = [];
+  const all = regexCorr.concat(Array.isArray(claudeCorr) ? claudeCorr : []);
+  for (const c of all) {
+    if (!c || !c.original) continue;
+    const key = norm(c.original) + '=>' + norm(c.suggested);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -133,12 +232,19 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: "Réponse du modèle illisible (JSON invalide)." });
     }
 
+    // Passe regex deterministe + fusion avec les corrections de Claude.
+    const regexCorr = runRegexPass({ text, docType: docType || 'cp_fr', consignes });
+    const corrections = mergeDedup(regexCorr, parsed.corrections || []);
+
     return res.status(200).json({
-      corrections: parsed.corrections || [],
+      corrections,
       synthese: parsed.synthese || '',
       score: parsed.score,
+      deterministic: regexCorr.length,
     });
   } catch (e) {
     return res.status(500).json({ error: "Erreur lors de l'analyse : " + e.message });
   }
 }
+
+export { runRegexPass, leftAnchor, mergeDedup, catToType };
