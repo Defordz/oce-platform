@@ -6,7 +6,7 @@
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MODEL = 'claude-opus-4-5';      // identifiant centralise (a revoir en phase finitions)
 const MAX_TOKENS = 4000;
-const MAX_DOC_CHARS = 12000;
+const MAX_DOC_CHARS = 30000;
 
 function setCors(res) {
   // CORS restreint au domaine de production (ALLOWED_ORIGIN), jamais '*'.
@@ -16,32 +16,39 @@ function setCors(res) {
 }
 
 function buildPrompt({ text, docType, opts, consignes }) {
-  const consignesText = (Array.isArray(consignes) ? consignes : [])
-    .filter(c => c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous')
-    .map(c => `[${c.code}] ${c.label}: ${String(c.text || '').substring(0, 150)}`)
-    .join('\n');
+  // Consignes applicables : actives, du bon type de document, et qui relevent
+  // du JUGEMENT (mode 'claude' ou 'compare'). Les consignes 'regex' purement
+  // mecaniques sont garanties par la passe deterministe, inutile de les
+  // soumettre a Claude (ce qui creerait des doublons).
+  const applicable = (Array.isArray(consignes) ? consignes : [])
+    .filter(c => c && c.active !== false && c.mode !== 'regex' &&
+      (c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous'));
+
+  // Met en forme une consigne avec son contenu COMPLET (texte + exemples).
+  const fmt = c => {
+    let s = `[${c.code}] ${c.label}\n${String(c.text || '').trim()}`;
+    if (c.examples) s += `\nExemples : ${String(c.examples).trim()}`;
+    return s;
+  };
+  const cat = k => String(k || '').toUpperCase();
+  const formeC = applicable.filter(c => cat(c.category) === 'FORME').map(fmt).join('\n\n');
+  const fondC = applicable.filter(c => cat(c.category) === 'FOND').map(fmt).join('\n\n');
+  const termC = applicable.filter(c => cat(c.category) === 'TERMINOLOGIE' || cat(c.category) === 'BILINGUE').map(fmt).join('\n\n');
 
   const formeInstructions = opts && opts.forme ? `
-CORRECTIONS DE FORME (OBLIGATOIRE - cherche toutes les erreurs suivantes):
-- Fautes d'orthographe: mots mal écrits, lettres manquantes ou en trop (ex: "dsd", "pds" insérés dans les mots)
-- Mots parasites insérés dans d'autres mots (ex: "dsdmet" → "met", "pdsour" → "pour", "indstéressés" → "intéressés")
-- Erreurs de frappe évidentes
-- Problèmes de typographie (guillemets, espaces)
-- Majuscules manquantes ou incorrectes
-` : '';
+CORRECTIONS DE FORME (orthographe, frappe, typographie, accords, majuscules) :
+- Fautes d'orthographe, lettres manquantes ou en trop, mots parasites insérés dans un mot (ex: "dsdmet" → "met").
+- Erreurs de frappe, problèmes de typographie (guillemets, espaces), majuscules manquantes ou incorrectes.
+${formeC ? `\nConsignes de forme applicables :\n${formeC}\n` : ''}` : '';
 
   const fondInstructions = opts && opts.fond ? `
-CORRECTIONS DE FOND (OBLIGATOIRE - cherche toutes les erreurs suivantes):
-- Formulations juridiques incorrectes selon la loi n°104-12
-- Structure du document non conforme
-- Qualifications juridiques erronées (ex: "opération de projet de concentration" → "opération de concentration")
-- Références légales incorrectes
-- Incohérences dans la désignation des parties
-` : '';
+CORRECTIONS DE FOND (formulations juridiques, structure, qualification) selon la loi n°104-12 :
+- Qualifications juridiques erronées, références légales incorrectes, désignation des parties, structure non conforme.
+${fondC ? `\nConsignes de fond applicables :\n${fondC}\n` : ''}` : '';
 
-  const terminologieInstructions = opts && opts.terminologie ? `
-TERMINOLOGIE (cherche les termes non conformes):
-${consignesText}
+  const terminologieInstructions = opts && opts.terminologie && termC ? `
+TERMINOLOGIE CONSACRÉE (termes et correspondances officiels à respecter) :
+${termC}
 ` : '';
 
   const full = String(text || '');
@@ -66,6 +73,7 @@ RÈGLES IMPORTANTES:
 - Le champ "suggested" contient la correction
 - Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
 - Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
+- Les corrections purement mécaniques (espaces de guillemets, accords simples, numéros de loi et de décret) sont déjà appliquées automatiquement par ailleurs : concentre-toi sur ce qui demande du jugement.
 - Ne pas inventer des erreurs qui n'existent pas
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
