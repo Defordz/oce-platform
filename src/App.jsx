@@ -373,11 +373,17 @@ function CorrectionPage({consignes, history, setHistory}) {
         seen.add(key); applyIslands.push(it);
       }
     }
-    // corrections ecartees mais redondantes -> comptees appliquees ; sinon orange
+    // corrections ecartees mais COUVERTES -> comptees appliquees ; sinon orange.
+    // "couverte" = soit ses marques sont deja posees a l'identique (redondance
+    // d'ilots), soit sa zone est entierement incluse dans celle d'une correction
+    // gardee : cette derniere reecrit toute la zone, donc appliquer la petite
+    // serait redondant ou en conflit. On evite ainsi une fausse alerte orange
+    // (ex: petit correctif de guillemet avale par une reecriture de phrase).
     for (const c of located) {
       if (!c.overlapped) continue;
-      const redundant = c.isls.length > 0 && c.isls.every(it => seen.has(it.a + "|" + it.b + "|" + it.ins));
-      if (redundant && appliedFlags) appliedFlags[c.ci] = true;
+      const islandRedundant = c.isls.length > 0 && c.isls.every(it => seen.has(it.a + "|" + it.b + "|" + it.ins));
+      const spanCovered = kept.some(k => k.ps <= c.ps && k.pe >= c.pe);
+      if ((islandRedundant || spanCovered) && appliedFlags) appliedFlags[c.ci] = true;
     }
 
     // 4. appliquer de la fin vers le debut pour garder les positions valides
