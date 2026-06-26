@@ -69,6 +69,7 @@ function Sidebar({page, setPage}) {
       </div>
       <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Rapporteur</div>
       {item("correction","📝","Corriger un document")}
+      {item("comparaison","🔀","Comparaison bilingue")}
       {item("historique","🕐","Historique")}
       <div style={{height:1,background:"rgba(255,255,255,.08)",margin:"7px 14px"}}/>
       <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Administrateur</div>
@@ -988,6 +989,198 @@ function UtilisateursPage() {
 }
 
 // ── ROOT ──
+function ComparaisonPage({consignes}) {
+  const [frName, setFrName] = useState("");
+  const [frText, setFrText] = useState("");
+  const [arName, setArName] = useState("");
+  const [arText, setArText] = useState("");
+  const [phase, setPhase] = useState("idle");
+  const [discrepancies, setDiscrepancies] = useState([]);
+  const [summary, setSummary] = useState("");
+  const [error, setError] = useState("");
+  const frRef = useRef(null);
+  const arRef = useRef(null);
+
+  // Extraction par paragraphe, identique a la page de correction.
+  const extractDocx = async f => {
+    const ab = await f.arrayBuffer();
+    try {
+      const zip = await JSZip.loadAsync(ab);
+      const docXml = await zip.file("word/document.xml").async("string");
+      const paras = [...docXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map(p => {
+        const t = [...p[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m => m[1]).join("");
+        return t.replace(/[ \t\u00a0\u202f\u2009]+/g, " ").trim();
+      }).filter(t => t.length);
+      return paras.join("\n");
+    } catch (e) {
+      return await f.text();
+    }
+  };
+
+  const handleFr = async f => { if (!f) return; setFrName(f.name); setFrText(await extractDocx(f)); };
+  const handleAr = async f => { if (!f) return; setArName(f.name); setArText(await extractDocx(f)); };
+
+  const compare = async () => {
+    setError("");
+    if (!frText || !arText) { setError("Charge les deux fichiers : la version française et la version arabe."); return; }
+    setPhase("loading");
+    try {
+      const res = await fetch("/api/compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ textFr: frText, textAr: arText, consignes }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ("HTTP " + res.status)); }
+      const d = await res.json();
+      setDiscrepancies(d.discrepancies || []);
+      setSummary(d.summary || "");
+      setPhase("results");
+    } catch (err) {
+      setError("Erreur lors de la comparaison : " + err.message);
+      setPhase("idle");
+    }
+  };
+
+  const CATB = { chiffre:["#dbeafe","#1e40af"], date:["#fdf5e0","#7a4a00"], qualification:["#f0e8f8","#4a1a6e"], terminologie:["#e8f5ec","#1a5c2a"], autre:["#ece9e0","#5a5a4a"] };
+  const CATL = { chiffre:"CHIFFRE", date:"DATE", qualification:"QUALIFICATION", terminologie:"TERMINOLOGIE", autre:"AUTRE" };
+  const sevColor = s => s === "haute" ? C.red : s === "basse" ? C.text3 : C.amber;
+
+  const exportReport = () => {
+    const esc = s => String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const rows = discrepancies.map(d => `<tr>
+      <td class="cat">${esc((CATL[d.category]||d.category||"").toLowerCase())}</td>
+      <td>${esc(d.fr)}</td>
+      <td dir="auto">${esc(d.ar)}</td>
+      <td class="note">${esc(d.note||"")}</td></tr>`).join("");
+    const body = discrepancies.length
+      ? `<table><thead><tr><th>Type</th><th>Version FR</th><th>Version AR</th><th>Écart</th></tr></thead><tbody>${rows}</tbody></table>`
+      : `<p class="ok">Aucun écart détecté : les deux versions sont cohérentes.</p>`;
+    const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Rapport de comparaison bilingue</title>
+<style>body{font-family:Georgia,serif;color:#1a1a2e;max-width:900px;margin:24px auto;padding:0 20px}
+h1{font-size:20px;color:#0f2650}.meta{font-size:12px;color:#6a6a7a;margin-bottom:16px}
+.sum{background:#f0ede4;padding:12px 14px;border-radius:8px;font-size:13px;margin-bottom:18px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{border:1px solid #d8d3c8;padding:7px 9px;text-align:left;vertical-align:top}
+th{background:#0f2650;color:#fff;font-weight:600}.cat{font-variant:small-caps;color:#1e40af}.note{color:#4a4a6a}.ok{color:#1a5c2a;font-size:14px}</style></head>
+<body><h1>Rapport de comparaison bilingue FR / AR</h1>
+<div class="meta">FR : ${esc(frName||"version française")} &nbsp;·&nbsp; AR : ${esc(arName||"version arabe")} &nbsp;·&nbsp; ${discrepancies.length} écart(s)</div>
+${summary ? `<div class="sum">${esc(summary)}</div>` : ""}
+${body}</body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "comparaison_bilingue.html"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const dropZone = (name, onFile, ref, label, sub) => (
+    <div
+      onClick={() => ref.current.click()}
+      onDragOver={e => e.preventDefault()}
+      onDrop={e => { e.preventDefault(); onFile(e.dataTransfer.files[0]); }}
+      style={{border:`1.5px dashed ${name?C.navy2:C.border2}`,background:name?"#edf2ff":C.cream2,borderRadius:8,padding:"18px 14px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+    >
+      <div style={{fontSize:22,marginBottom:5}}>📄</div>
+      <div style={{fontSize:12,fontWeight:500,color:C.text}}>{name || label}</div>
+      <div style={{fontSize:10.5,color:C.text3,marginTop:3}}>{sub}</div>
+      <input ref={ref} type="file" accept=".docx,.txt" style={{display:"none"}} onChange={e => onFile(e.target.files[0])} />
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+      <PageHeader
+        title="Comparaison bilingue"
+        sub="Charger la version FR et la version AR · Rapport des écarts entre les deux"
+        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>FR ↔ AR</span>}
+      />
+
+      {error && <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf0f0",border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12.5,color:C.red}}>{error}</div>}
+
+      <div style={{flex:1,overflowY:"auto",padding:"20px 30px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,alignItems:"start"}}>
+        {/* Gauche : les deux fichiers */}
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Card>
+            <SLabel>Version française</SLabel>
+            {dropZone(frName, handleFr, frRef, "Déposer le communiqué FR", "Word (.docx) en français")}
+          </Card>
+          <Card>
+            <SLabel>Version arabe</SLabel>
+            {dropZone(arName, handleAr, arRef, "Déposer le communiqué AR", "البلاغ بالعربية (.docx)")}
+          </Card>
+          <button onClick={compare} disabled={phase==="loading"} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:phase==="loading"?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:phase==="loading"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+            {phase==="loading" ? <><Spinner/><span>Comparaison en cours…</span></> : <><span>🔀</span><span>Comparer les deux versions</span></>}
+          </button>
+        </div>
+
+        {/* Droite : rapport */}
+        <div>
+          {phase==="idle" && (
+            <Card style={{textAlign:"center",padding:"44px 20px"}}>
+              <div style={{fontSize:34,marginBottom:10,opacity:.25}}>🔀</div>
+              <p style={{fontSize:12.5,color:C.text3,lineHeight:1.6}}>Chargez les deux versions et lancez la comparaison<br/>pour voir le rapport d'écarts</p>
+            </Card>
+          )}
+
+          {phase==="loading" && (
+            <Card style={{padding:"40px 20px"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+                <Spinner/>
+                <div style={{fontSize:12,color:C.text2}}>Comparaison des chiffres, dates et terminologie…</div>
+              </div>
+            </Card>
+          )}
+
+          {phase==="results" && (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <Card>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:500,color:C.navy2}}>Cohérence bilingue</div>
+                  <span style={{background:discrepancies.length?C.amberLight:C.greenLight,color:discrepancies.length?C.amber:C.green,padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>{discrepancies.length} écart(s)</span>
+                </div>
+                {summary && <div style={{fontSize:11.5,color:C.text2,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>{summary}</div>}
+              </Card>
+
+              {discrepancies.length === 0 ? (
+                <Card style={{borderLeft:`3px solid ${C.green}`,background:C.greenLight}}>
+                  <div style={{fontSize:12.5,fontWeight:600,color:C.green,marginBottom:4}}>✓ Aucun écart détecté</div>
+                  <div style={{fontSize:11,color:C.text2,lineHeight:1.5}}>Les deux versions concordent sur les points vérifiés : chiffres, dates, qualification de l'opération et terminologie.</div>
+                </Card>
+              ) : (
+                <Card>
+                  <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:10}}>Écarts relevés ({discrepancies.length})</div>
+                  {discrepancies.map((d,i) => {
+                    const cb = CATB[d.category] || CATB.autre;
+                    return (
+                      <div key={i} style={{padding:"10px 12px",border:`1px solid ${C.border}`,borderLeft:`3px solid ${sevColor(d.severity)}`,borderRadius:8,marginBottom:6,background:"#fff"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                          <span style={{fontSize:9,fontWeight:600,letterSpacing:".04em",padding:"2px 7px",borderRadius:4,background:cb[0],color:cb[1]}}>{CATL[d.category]||"AUTRE"}</span>
+                          {d.deterministic && <span style={{fontSize:9,color:C.text3}}>vérif. auto</span>}
+                          <span style={{marginLeft:"auto",fontSize:9.5,color:sevColor(d.severity)}}>{d.severity||"moyenne"}</span>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"26px 1fr",gap:"4px 8px",alignItems:"baseline"}}>
+                          <span style={{fontSize:9.5,color:C.text3,fontWeight:600}}>FR</span>
+                          <span style={{fontSize:11.5,color:C.text,unicodeBidi:"plaintext"}}>{d.fr}</span>
+                          <span style={{fontSize:9.5,color:C.text3,fontWeight:600}}>AR</span>
+                          <span style={{fontSize:11.5,color:C.text,unicodeBidi:"plaintext"}}>{d.ar}</span>
+                        </div>
+                        {d.note && <div style={{fontSize:10.5,color:C.text2,marginTop:6,lineHeight:1.5}}>{d.note}</div>}
+                      </div>
+                    );
+                  })}
+                </Card>
+              )}
+
+              <button onClick={exportReport} style={{width:"100%",padding:"10px",border:`1px solid ${C.navy2}`,borderRadius:7,background:"#fff",color:C.navy,fontSize:13,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+                <span>📤</span> Exporter le rapport (.html)
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState("correction");
   const [consignes, setConsignes] = useState(DEFAULT_CONSIGNES);
@@ -1031,6 +1224,7 @@ export default function App() {
         <Sidebar page={page} setPage={setPage}/>
         <main style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
+          {page==="comparaison"   && <ComparaisonPage consignes={consignes}/>}
           {page==="historique"    && <HistoriquePage history={history}/>}
           {page==="dashboard"     && <DashboardPage history={history}/>}
           {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignes} onSaveServer={saveConsignesToServer} onReloadServer={loadConsignes}/>}
