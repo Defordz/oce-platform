@@ -3,6 +3,8 @@
 // Ne corrige pas un document : signale les ECARTS entre les deux versions.
 // Meme modele de securite que /api/analyze : la cle reste cote serveur.
 
+import { requireAppPassword } from '../lib/auth.js';
+
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MODEL = 'claude-opus-4-5';
 const MAX_TOKENS = 4000;
@@ -11,7 +13,7 @@ const MAX_DOC_CHARS = 15000;
 function setCors(res) {
   if (ALLOWED_ORIGIN) res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-app-password');
 }
 
 // Normalise les chiffres arabes (indo-arabes U+0660-0669 et leur variante
@@ -150,6 +152,7 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
+  if (!requireAppPassword(req, res)) return;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
