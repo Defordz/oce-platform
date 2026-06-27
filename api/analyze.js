@@ -3,6 +3,8 @@
 // Remplace l'appel direct a api.anthropic.com qui exposait la cle dans le navigateur.
 // La cle ANTHROPIC_API_KEY ne quitte jamais le serveur ; le prompt est construit ici.
 
+import { requireAppPassword } from '../lib/auth.js';
+
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MODEL = 'claude-opus-4-5';      // identifiant centralise (a revoir en phase finitions)
 const MAX_TOKENS = 4000;
@@ -12,7 +14,7 @@ function setCors(res) {
   // CORS restreint au domaine de production (ALLOWED_ORIGIN), jamais '*'.
   if (ALLOWED_ORIGIN) res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-app-password');
 }
 
 function buildPrompt({ text, docType, opts, consignes }) {
@@ -74,6 +76,7 @@ RÈGLES IMPORTANTES:
 - Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
 - Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
 - Les corrections purement mécaniques (espaces de guillemets, accords simples, numéros de loi et de décret) sont déjà appliquées automatiquement par ailleurs : concentre-toi sur ce qui demande du jugement.
+- Le champ "code" doit être EXACTEMENT l'un des codes de consignes listés plus haut (ex: F-03, D-04, T-01), ou vide. N'invente JAMAIS un code qui ne figure pas dans la liste fournie.
 - Ne pas inventer des erreurs qui n'existent pas
 
 Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
@@ -195,6 +198,7 @@ export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Méthode non autorisée' });
+  if (!requireAppPassword(req, res)) return;
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
