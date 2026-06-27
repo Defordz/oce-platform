@@ -1,4 +1,13 @@
 import { useState, useRef, useEffect } from "react";
+
+// --- Mot de passe partage de l'application ---
+// Stocke en sessionStorage (efface a la fermeture de l'onglet) et joint a chaque
+// appel /api/* via l'en-tete x-app-password, que les endpoints verifient.
+const PW_KEY = "oce_app_pw";
+const getPw = () => { try { return sessionStorage.getItem(PW_KEY) || ""; } catch { return ""; } };
+const setPw = v => { try { sessionStorage.setItem(PW_KEY, v); } catch {} };
+const clearPw = () => { try { sessionStorage.removeItem(PW_KEY); } catch {} };
+const authHeaders = () => { const p = getPw(); return p ? { "x-app-password": p } : {}; };
 import JSZip from "jszip";
 
 // ── PALETTE ──
@@ -243,7 +252,7 @@ function CorrectionPage({consignes, history, setHistory}) {
       // La cle Anthropic reste cote serveur : on passe par /api/analyze.
       const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ text, docType, opts, consignes }),
       });
 
@@ -1027,7 +1036,7 @@ function ComparaisonPage({consignes}) {
     try {
       const res = await fetch("/api/compare", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ textFr: frText, textAr: arText, consignes }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || ("HTTP " + res.status)); }
@@ -1181,34 +1190,100 @@ ${body}</body></html>`;
   );
 }
 
+function LoginScreen({ onSuccess }) {
+  const [pw, setPwInput] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    if (!pw) { setError("Entrez le mot de passe."); return; }
+    setError(""); setBusy(true);
+    setPw(pw); // stocke en session, lu ensuite par authHeaders()
+    try {
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() } });
+      if (r.ok) { onSuccess(); return; }
+      clearPw();
+      setError(r.status === 401 ? "Mot de passe incorrect." : "Erreur serveur (" + r.status + ").");
+    } catch (e) {
+      clearPw(); setError("Connexion impossible : " + e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }`}</style>
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.cream,padding:20}}>
+        <div style={{width:340,maxWidth:"100%",background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"30px 26px",boxShadow:"0 10px 40px rgba(15,38,80,.08)"}}>
+          <div style={{fontSize:18,fontWeight:600,color:C.navy,marginBottom:4}}>Plateforme OCE</div>
+          <div style={{fontSize:11.5,color:C.text3,marginBottom:20,lineHeight:1.5}}>Correction des communiqués du Conseil de la concurrence</div>
+          <SLabel>Mot de passe</SLabel>
+          <input
+            type="password" value={pw} autoFocus
+            onChange={e => setPwInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submit(); }}
+            style={{width:"100%",padding:"9px 11px",border:`1px solid ${C.border2}`,borderRadius:7,fontSize:13,marginBottom:12,outline:"none"}}
+          />
+          {error && <div style={{fontSize:11.5,color:C.red,marginBottom:10}}>{error}</div>}
+          <button onClick={submit} disabled={busy} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:busy?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:busy?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+            {busy ? <><Spinner/><span>Vérification…</span></> : "Entrer"}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function App() {
   const [page, setPage] = useState("correction");
   const [consignes, setConsignes] = useState(DEFAULT_CONSIGNES);
   const [history, setHistory] = useState([]);
+  const [authed, setAuthed] = useState(false);
+  const [checking, setChecking] = useState(true);
 
-  // Charge les consignes depuis le serveur au demarrage (source unique).
+  // Charge les consignes depuis le serveur (source unique).
   const loadConsignes = async () => {
-    const r = await fetch("/api/consignes");
+    const r = await fetch("/api/consignes", { headers: { ...authHeaders() } });
     if (!r.ok) throw new Error("HTTP " + r.status);
     const d = await r.json();
     if (Array.isArray(d.consignes)) setConsignes(d.consignes);
   };
 
+  // Au demarrage : valide un mot de passe deja en session, le cas echeant.
   useEffect(() => {
-    loadConsignes().catch(e => console.warn("Consignes : lecture serveur impossible, repli local.", e));
+    (async () => {
+      if (!getPw()) { setChecking(false); return; }
+      try {
+        const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() } });
+        if (r.ok) setAuthed(true); else clearPw();
+      } catch { /* reseau indisponible : on retombe sur l'ecran de connexion */ }
+      setChecking(false);
+    })();
   }, []);
 
-  // Enregistre la liste complete sur le serveur (protege par mot de passe admin).
+  // Charge les consignes une fois connecte.
+  useEffect(() => {
+    if (authed) loadConsignes().catch(e => console.warn("Consignes : lecture serveur impossible, repli local.", e));
+  }, [authed]);
+
+  // Enregistre la liste complete sur le serveur (jeton admin + mot de passe app).
   const saveConsignesToServer = async (liste, jeton) => {
     const r = await fetch("/api/consignes", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-admin-token": jeton },
+      headers: { "Content-Type": "application/json", "x-admin-token": jeton, ...authHeaders() },
       body: JSON.stringify({ consignes: liste }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
     return d;
   };
+
+  if (checking) return (
+    <>
+      <style>{`body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }`}</style>
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.cream,color:C.text3,fontSize:13}}>Chargement…</div>
+    </>
+  );
+  if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
 
   return (
     <>
