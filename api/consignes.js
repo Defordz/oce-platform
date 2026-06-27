@@ -4,6 +4,7 @@
 // POST : remplace la liste, protege par un jeton administrateur.
 
 import { readConsignes, writeConsignes } from '../lib/consignesStore.js';
+import { requireAppPassword } from '../lib/auth.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 
@@ -12,12 +13,13 @@ function setCors(res) {
   // au lieu du '*' des anciens endpoints.
   if (ALLOWED_ORIGIN) res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-token');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-admin-token, x-app-password');
 }
 
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!requireAppPassword(req, res)) return;
 
   if (req.method === 'GET') {
     try {
