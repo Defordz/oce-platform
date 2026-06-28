@@ -255,6 +255,18 @@ function runDecisionChecks(text) {
       warnings.push({ kind: 'structure', message: `Ordre des sections inhabituel : « ${present[i].name} » apparaît avant « ${present[i - 1].name} ».` });
     }
   }
+
+  // 3) Cohérence du numéro de dossier de notification (visas vs article premier).
+  const nums = [];
+  const normedFull = normArabicDigits(paras.join('\n'));
+  const reNum = /عدد\s*(\d+)\s*\/\s*ع/g;
+  let mm;
+  while ((mm = reNum.exec(normedFull)) !== null) nums.push(mm[1]);
+  const distinct = [...new Set(nums)];
+  if (distinct.length > 1) {
+    warnings.push({ kind: 'cohérence', message: `Numéro de dossier de notification incohérent : ${distinct.join(' / ')}. Il doit être identique dans les visas et dans l'article premier.` });
+  }
+
   return warnings;
 }
 
