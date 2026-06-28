@@ -81,6 +81,7 @@ function Sidebar({page, setPage}) {
       </div>
       <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Rapporteur</div>
       {item("correction","📝","Corriger les communiqués")}
+      {item("decisions","⚖️","Corriger les décisions")}
       {item("comparaison","🔀","Comparaison FR / AR")}
       {item("historique","🕐","Historique")}
       <div style={{height:1,background:"rgba(255,255,255,.08)",margin:"7px 14px"}}/>
@@ -194,8 +195,27 @@ function diffIslands(a, b) {
 }
 
 // ── CORRECTION PAGE ──
-function CorrectionPage({consignes, history, setHistory}) {
-  const [docType, setDocType] = useState("cp_fr");
+// Variantes de la page de correction : communiqués (defaut) et décisions.
+const CORRECTION_VARIANTS = {
+  communique: {
+    title: "Corriger les communiqués de presse",
+    sub: "Import du communiqué · Export Word avec suivi des modifications",
+    docTypes: [["cp_fr","Communiqué FR","CP presse français"],["cp_ar","بلاغ AR","البلاغ الصحفي"]],
+    defaultType: "cp_fr",
+    allowDemo: true,
+  },
+  decision: {
+    title: "Corriger les décisions",
+    sub: "Import de la décision (قرار) · Export Word avec suivi des modifications",
+    docTypes: [["decision_ar","قرار AR","القرار بالعربية"]],
+    defaultType: "decision_ar",
+    allowDemo: false,
+  },
+};
+
+function CorrectionPage({consignes, history, setHistory, variant}) {
+  const cfg = CORRECTION_VARIANTS[variant] || CORRECTION_VARIANTS.communique;
+  const [docType, setDocType] = useState(cfg.defaultType);
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [fileBytes, setFileBytes] = useState(null);
@@ -241,6 +261,8 @@ function CorrectionPage({consignes, history, setHistory}) {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
   const analyze = async () => {
+    const text = fileContent || (cfg.allowDemo ? DEMO_TEXT : "");
+    if (!text) { setError("Veuillez d'abord charger une décision (.docx)."); return; }
     setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]);
 
     // Animate steps
@@ -248,8 +270,6 @@ function CorrectionPage({consignes, history, setHistory}) {
       setLoadStep(i);
       await sleep(400 + Math.random() * 300);
     }
-
-    const text = fileContent || DEMO_TEXT;
 
     try {
       // La cle Anthropic reste cote serveur : on passe par /api/analyze.
@@ -450,8 +470,8 @@ function CorrectionPage({consignes, history, setHistory}) {
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
-        title="Corriger les communiqués de presse"
-        sub="Import du communiqué · Export Word avec suivi des modifications"
+        title={cfg.title}
+        sub={cfg.sub}
         right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>{consignes.length} consignes actives</span>}
       />
 
@@ -471,7 +491,7 @@ function CorrectionPage({consignes, history, setHistory}) {
               <div style={{fontSize:26,marginBottom:7}}>📄</div>
               <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{fileName || "Déposer le fichier ici"}</div>
               <div style={{fontSize:11,color:C.text3,marginTop:3}}>Word (.docx) ou PDF — FR ou AR</div>
-              {!fileName && <div style={{fontSize:10.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
+              {!fileName && cfg.allowDemo && <div style={{fontSize:10.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
             </div>
             <input ref={fileRef} type="file" accept=".docx,.pdf,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
           </Card>
@@ -479,7 +499,7 @@ function CorrectionPage({consignes, history, setHistory}) {
           <Card>
             <SLabel>Type de document</SLabel>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
-              {[["cp_fr","Communiqué FR","CP presse français"],["cp_ar","بلاغ AR","البلاغ الصحفي"]].map(([id,label,sub]) => (
+              {cfg.docTypes.map(([id,label,sub]) => (
                 <div key={id} onClick={() => setDocType(id)} style={{padding:"8px 12px",border:`1px solid ${docType===id?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:docType===id?C.navy2:"#fff",color:docType===id?"#fff":C.text,transition:"all .15s"}}>
                   <div style={{fontSize:12,fontWeight:500}}>{label}</div>
                   <div style={{fontSize:10,opacity:.6,marginTop:2}}>{sub}</div>
@@ -1303,6 +1323,7 @@ export default function App() {
         <Sidebar page={page} setPage={setPage}/>
         <main style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
+          {page==="decisions"     && <CorrectionPage variant="decision" consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="comparaison"   && <ComparaisonPage consignes={consignes}/>}
           {page==="historique"    && <HistoriquePage history={history}/>}
           {page==="dashboard"     && <DashboardPage history={history}/>}
