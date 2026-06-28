@@ -267,6 +267,26 @@ function runDecisionChecks(text) {
     warnings.push({ kind: 'cohérence', message: `Numéro de dossier de notification incohérent : ${distinct.join(' / ')}. Il doit être identique dans les visas et dans l'article premier.` });
   }
 
+  // 4) Conformité de structure de fond : présence des éléments attendus.
+  // La dérogation (exception au titre de l'art. 14, 2e alinéa) suit une trame
+  // allégée, sans définition de marché ni analyse concurrentielle.
+  const hasM = (...alts) => alts.some(a => full.includes(stripArabic(a)));
+  const need = (label, ok) => { if (!ok) warnings.push({ kind: 'conformité', message: `Élément de fond attendu absent : ${label}.` }); };
+  const isDerog = hasM('الاستثناء') && hasM('الفقرة الثانية من المادة 14', 'الفقرة 2 من المادة 14');
+
+  need("qualification au sens de l'article 11", hasM('المادة 11'));
+  need("seuils de l'article 12", hasM('المادة 12'));
+  if (isDerog) {
+    need('autorisation à titre exceptionnel (art. 14, 2e alinéa)', hasM('بصفة استثنائية'));
+  } else {
+    need('définition du marché pertinent', hasM('السوق المعنية', 'الأسواق المعنية', 'تحديد السوق', 'تحديد الأسواق'));
+    need('analyse des effets horizontaux', hasM('أفقي', 'الأفقية'));
+    need('analyse des effets verticaux', hasM('عمودي', 'العمودية'));
+    need('analyse des effets congloméraux', hasM('تكتل', 'التكتلية'));
+  }
+  need('dispositif — article premier (يستوفي الشروط القانونية)', hasM('يستوفي الشروط القانونية'));
+  need('dispositif — article deux (يرخص مجلس المنافسة)', hasM('يرخص مجلس المنافسة'));
+
   return warnings;
 }
 
