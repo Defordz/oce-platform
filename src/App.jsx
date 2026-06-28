@@ -228,6 +228,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [statuses, setStatuses] = useState({});
   const [error, setError] = useState("");
   const [notApplied, setNotApplied] = useState([]);
+  const [warnings, setWarnings] = useState([]);
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -263,7 +264,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const analyze = async () => {
     const text = fileContent || (cfg.allowDemo ? DEMO_TEXT : "");
     if (!text) { setError("Veuillez d'abord charger une décision (.docx)."); return; }
-    setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]);
+    setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]); setWarnings([]);
 
     // Animate steps
     for (let i = 0; i < steps.length; i++) {
@@ -288,6 +289,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
       setCorrections(parsed.corrections || []);
       setSynthese(parsed.synthese || "");
+      setWarnings(parsed.warnings || []);
       setScore(parsed.score);
       setHistory(h => [{id:Date.now(),file:fileName||"Document démo",type:docType,corrections:(parsed.corrections||[]).length,score:parsed.score,date:new Date().toLocaleDateString("fr-FR"),data:parsed.corrections,synthese:parsed.synthese},...h]);
     } catch (err) {
@@ -569,6 +571,16 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 </div>
                 <div style={{fontSize:11.5,color:C.text2,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>{synthese}</div>
               </Card>
+
+              {warnings.length > 0 && (
+              <Card>
+                <div style={{fontSize:13,fontWeight:500,color:C.amber,marginBottom:8,display:"flex",alignItems:"center",gap:6}}><span>⚠️</span> Vérifications structurelles ({warnings.length})</div>
+                {warnings.map((w,i) => (
+                  <div key={i} style={{fontSize:11.5,color:C.text,lineHeight:1.5,padding:"8px 11px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:6,marginBottom:6,unicodeBidi:"plaintext"}}>{w.message}</div>
+                ))}
+                <div style={{fontSize:10.5,color:C.text3,fontStyle:"italic",marginTop:2}}>Signalements pour relecture, sans correction automatique du fichier.</div>
+              </Card>
+              )}
 
               <Card>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
