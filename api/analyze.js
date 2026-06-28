@@ -194,6 +194,70 @@ function mergeDedup(regexCorr, claudeCorr) {
   return out;
 }
 
+// --- Vérifications structurelles déterministes propres aux décisions (decision_ar) ---
+// Deux contrôles, validés sur le corpus des décisions exemplaires (zéro fausse alerte) :
+//  1) la chronologie des étapes procédurales (clauses « وبعد ») doit être croissante ;
+//  2) les sections présentes doivent apparaître dans l'ordre canonique.
+// Ces contrôles SIGNALENT (warnings) sans corriger : une date hors séquence peut venir
+// d'une date erronée ou d'un paragraphe déplacé, c'est au relecteur de trancher.
+
+const GREG_MONTHS = { "يناير":1,"فبراير":2,"مارس":3,"أبريل":4,"ابريل":4,"ماي":5,"مايو":5,"يونيو":6,"يونيه":6,"يوليوز":7,"يوليو":7,"غشت":8,"شتنبر":9,"سبتمبر":9,"أكتوبر":10,"اكتوبر":10,"نونبر":11,"نوفمبر":11,"دجنبر":12,"ديسمبر":12 };
+const GREG_MONTHS_RE = Object.keys(GREG_MONTHS).sort((a, b) => b.length - a.length).join('|');
+
+function normArabicDigits(s) {
+  let out = '';
+  for (const ch of String(s)) {
+    const o = ch.codePointAt(0);
+    if (o >= 0x0660 && o <= 0x0669) out += String.fromCharCode(o - 0x0660 + 0x30);
+    else if (o >= 0x06F0 && o <= 0x06F9) out += String.fromCharCode(o - 0x06F0 + 0x30);
+    else out += ch;
+  }
+  return out;
+}
+function stripArabic(s) {
+  return String(s).replace(/[\u0640\u064B-\u0652\u0670]/g, '').replace(/[أإآ]/g, 'ا').replace(/\s+/g, ' ');
+}
+function firstGregDate(s) {
+  const m = normArabicDigits(s).match(new RegExp('(\\d{1,2})\\s+(' + GREG_MONTHS_RE + ')\\s+(\\d{4})'));
+  if (!m) return null;
+  return { key: (+m[3]) * 10000 + GREG_MONTHS[m[2]] * 100 + (+m[1]), label: m[1] + ' ' + m[2] + ' ' + m[3] };
+}
+function runDecisionChecks(text) {
+  const warnings = [];
+  const paras = String(text || '').split('\n').map(p => p.trim()).filter(Boolean);
+
+  // 1) Chronologie des clauses « وبعد » avant le dispositif.
+  const seq = [];
+  for (const p of paras) {
+    if (p.includes('قرر ما يلي')) break;
+    const pn = stripArabic(p);
+    if (pn.startsWith('وبعد') || pn.startsWith('بعد')) {
+      const d = firstGregDate(p);
+      if (d) seq.push(d);
+    }
+  }
+  for (let i = 1; i < seq.length; i++) {
+    if (seq[i].key < seq[i - 1].key) {
+      warnings.push({ kind: 'chronologie', message: `Ordre chronologique rompu dans les visas : la date « ${seq[i].label} » apparaît après « ${seq[i - 1].label} » alors qu'elle lui est antérieure. Vérifier l'ordre des paragraphes ou la date.` });
+    }
+  }
+
+  // 2) Ordre des sections présentes (on ne signale pas une section absente).
+  const MARKERS = [['ouverture', 'ان مجلس المنافسة'], ['visas', 'بناء على'], ['considérants', 'وحيث'], ['dispositif', 'قرر ما يلي'], ['délibération', 'تم التداول']];
+  const full = stripArabic(paras.join('\n'));
+  const present = [];
+  for (const [name, mk] of MARKERS) {
+    const i = full.indexOf(stripArabic(mk));
+    if (i >= 0) present.push({ name, i });
+  }
+  for (let i = 1; i < present.length; i++) {
+    if (present[i].i < present[i - 1].i) {
+      warnings.push({ kind: 'structure', message: `Ordre des sections inhabituel : « ${present[i].name} » apparaît avant « ${present[i - 1].name} ».` });
+    }
+  }
+  return warnings;
+}
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -248,11 +312,15 @@ export default async function handler(req, res) {
     const regexCorr = runRegexPass({ text, docType: docType || 'cp_fr', consignes });
     const corrections = mergeDedup(regexCorr, parsed.corrections || []);
 
+    // Vérifications structurelles déterministes, uniquement pour les décisions.
+    const warnings = (docType === 'decision_ar') ? runDecisionChecks(text) : [];
+
     return res.status(200).json({
       corrections,
       synthese: parsed.synthese || '',
       score: parsed.score,
       deterministic: regexCorr.length,
+      warnings,
     });
   } catch (e) {
     return res.status(500).json({ error: "Erreur lors de l'analyse : " + e.message });
