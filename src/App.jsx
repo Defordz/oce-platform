@@ -418,7 +418,13 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       });
       located.push({ ci, ps, pe, isls });
     }
-    if (!located.length) return paraXml;
+    // Espaces multiples : suites de 2+ espaces ASCII a reduire a une seule.
+    // Invisibles a l'analyse (le texte est normalise avant l'envoi au serveur),
+    // on les traite donc ici, directement sur le document brut. On ne touche pas
+    // aux espaces insecables (\u00a0), typographiquement corrects en francais.
+    const wsRuns = [];
+    { const wre = / {2,}/g; let wm; while ((wm = wre.exec(combined)) !== null) wsRuns.push({ a: wm.index + 1, b: wm.index + wm[0].length, ins: "" }); }
+    if (!located.length && !wsRuns.length) return paraXml;
 
     // 2. resoudre les chevauchements de plages : par debut croissant, puis plage
     //    la plus large d'abord ; on garde les plages disjointes.
@@ -450,6 +456,15 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       const islandRedundant = c.isls.length > 0 && c.isls.every(it => seen.has(it.a + "|" + it.b + "|" + it.ins));
       const spanCovered = kept.some(k => k.ps <= c.ps && k.pe >= c.pe);
       if ((islandRedundant || spanCovered) && appliedFlags) appliedFlags[c.ci] = true;
+    }
+
+    // 3b. espaces multiples : on ajoute les reductions qui ne chevauchent pas
+    //     une correction deja retenue (celle-ci reecrit deja sa zone).
+    for (const w of wsRuns) {
+      if (kept.some(k => w.a < k.pe && w.b > k.ps)) continue;
+      const key = w.a + "|" + w.b + "|" + w.ins;
+      if (seen.has(key)) continue;
+      seen.add(key); applyIslands.push(w);
     }
 
     // 4. appliquer de la fin vers le debut pour garder les positions valides
