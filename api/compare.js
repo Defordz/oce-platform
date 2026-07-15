@@ -1,293 +1,151 @@
-// api/analyze.js
-// Analyse d'un document via Claude, cote SERVEUR.
-// Remplace l'appel direct a api.anthropic.com qui exposait la cle dans le navigateur.
-// La cle ANTHROPIC_API_KEY ne quitte jamais le serveur ; le prompt est construit ici.
+// api/compare.js
+// Comparaison BILINGUE FR/AR d'un meme communiqué, cote SERVEUR.
+// Ne corrige pas un document : signale les ECARTS entre les deux versions.
+// Meme modele de securite que /api/analyze : la cle reste cote serveur.
 
 import { requireAppPassword } from '../lib/auth.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
-const MODEL = 'claude-opus-4-5';      // identifiant centralise (a revoir en phase finitions)
+const MODEL = 'claude-opus-4-5';
 const MAX_TOKENS = 4000;
-const MAX_DOC_CHARS = 30000;
+const MAX_DOC_CHARS = 15000;
 
 function setCors(res) {
-  // CORS restreint au domaine de production (ALLOWED_ORIGIN), jamais '*'.
   if (ALLOWED_ORIGIN) res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-app-password');
 }
 
-function buildPrompt({ text, docType, opts, consignes }) {
-  // Consignes applicables : actives, du bon type de document, et qui relevent
-  // du JUGEMENT (mode 'claude' ou 'compare'). Les consignes 'regex' purement
-  // mecaniques sont garanties par la passe deterministe, inutile de les
-  // soumettre a Claude (ce qui creerait des doublons).
-  const applicable = (Array.isArray(consignes) ? consignes : [])
-    .filter(c => c && c.active !== false && c.mode !== 'regex' &&
-      (c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous'));
-
-  // Met en forme une consigne avec son contenu COMPLET (texte + exemples).
-  const fmt = c => {
-    let s = `[${c.code}] ${c.label}\n${String(c.text || '').trim()}`;
-    if (c.examples) s += `\nExemples : ${String(c.examples).trim()}`;
-    return s;
-  };
-  const cat = k => String(k || '').toUpperCase();
-  const formeC = applicable.filter(c => cat(c.category) === 'FORME').map(fmt).join('\n\n');
-  const fondC = applicable.filter(c => cat(c.category) === 'FOND').map(fmt).join('\n\n');
-  const termC = applicable.filter(c => cat(c.category) === 'TERMINOLOGIE' || cat(c.category) === 'BILINGUE').map(fmt).join('\n\n');
-
-  const formeInstructions = opts && opts.forme ? `
-CORRECTIONS DE FORME (orthographe, frappe, typographie, accords, majuscules) :
-- Fautes d'orthographe, lettres manquantes ou en trop, mots parasites insérés dans un mot (ex: "dsdmet" → "met").
-- Erreurs de frappe, problèmes de typographie (guillemets, espaces), majuscules manquantes ou incorrectes.
-${formeC ? `\nConsignes de forme applicables :\n${formeC}\n` : ''}` : '';
-
-  const fondInstructions = opts && opts.fond ? `
-CORRECTIONS DE FOND (formulations juridiques, structure, qualification) selon la loi n°104-12 :
-- Qualifications juridiques erronées, références légales incorrectes, désignation des parties, structure non conforme.
-${fondC ? `\nConsignes de fond applicables :\n${fondC}\n` : ''}` : '';
-
-  const terminologieInstructions = opts && opts.terminologie && termC ? `
-TERMINOLOGIE CONSACRÉE (termes et correspondances officiels à respecter) :
-${termC}
-` : '';
-
-  const full = String(text || '');
-  const doc = full.substring(0, MAX_DOC_CHARS);
-  const truncated = full.length > MAX_DOC_CHARS ? '...[tronqué]' : '';
-
-  return `Tu es un expert en correction de documents juridiques du Conseil de la Concurrence marocain.
-Tu dois analyser le document et trouver TOUTES les erreurs présentes.
-
-Type de document: ${docType}
-
-${formeInstructions}
-${fondInstructions}
-${terminologieInstructions}
-
-DOCUMENT À CORRIGER:
-${doc}${truncated}
-
-RÈGLES IMPORTANTES:
-- Le champ "original" doit contenir EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot
-- Le document conserve les sauts de ligne entre les sections : le champ "original" doit être un extrait situé sur UNE SEULE ligne, jamais à cheval sur deux lignes
-- Le champ "suggested" contient la correction
-- Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met"
-- Cherche TOUTES les occurrences de chaque type d'erreur dans tout le document
-- Les corrections purement mécaniques (espaces de guillemets, accords simples, numéros de loi et de décret) sont déjà appliquées automatiquement par ailleurs : concentre-toi sur ce qui demande du jugement.
-- Le champ "code" doit être EXACTEMENT l'un des codes de consignes listés plus haut (ex: F-03, D-04, T-01), ou vide. N'invente JAMAIS un code qui ne figure pas dans la liste fournie.
-- Ne pas inventer des erreurs qui n'existent pas
-
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks:
-{
-  "corrections": [
-    {
-      "type": "forme|fond|terminologie|bilingue",
-      "code": "F-01 ou vide si pas de consigne applicable",
-      "original": "texte exact du document avec l'erreur",
-      "suggested": "texte corrigé",
-      "reason": "explication courte"
-    }
-  ],
-  "synthese": "résumé de l'analyse en 2-3 phrases",
-  "score": 7
-}`;
-}
-
-// ----------------------------------------------------------------------------
-// PASSE REGEX (deterministe)
-// Applique les consignes qui portent un tableau "regex" sur le texte extrait,
-// et produit des corrections au MEME format que celles de Claude.
-// ----------------------------------------------------------------------------
-
-function catToType(cat) {
-  switch (String(cat || '').toUpperCase()) {
-    case 'FOND': return 'fond';
-    case 'TERMINOLOGIE': return 'terminologie';
-    case 'BILINGUE': return 'bilingue';
-    default: return 'forme';
-  }
-}
-
-// Etend la correction vers la GAUCHE juste assez pour que "original" soit UNIQUE
-// dans le texte (donc unique aussi dans n'importe quel paragraphe), ce qui permet
-// au moteur (qui cherche la 1re occurrence par paragraphe) de localiser CHAQUE
-// occurrence. On ne traverse jamais un saut de ligne (donc jamais un paragraphe).
-// Exemple : cinq "... Ltd.»" deviennent "Alpha Ltd.»", "Beta Ltd.»", etc.
-function leftAnchor(text, s, matched) {
-  const occ = sub => {
-    let n = 0, i = 0;
-    while ((i = text.indexOf(sub, i)) !== -1) { n++; i += sub.length || 1; }
-    return n;
-  };
-  if (occ(matched) <= 1) return s;            // deja unique sans contexte
-  const MAX_BACK = 60;
-  let li = s;
-  while (li > 0 && (s - li) < MAX_BACK) {
-    const ch = text[li - 1];
-    if (ch === '\n' || ch === '\r') break;    // ne pas franchir un paragraphe
-    li--;
-    if (occ(text.slice(li, s) + matched) <= 1) break;
-  }
-  return li;
-}
-
-function runRegexPass({ text, docType, consignes }) {
-  const list = Array.isArray(consignes) ? consignes : [];
-  const full = String(text || '');
-  const out = [];
-  for (const c of list) {
-    if (!c || c.active === false) continue;
-    if (!Array.isArray(c.regex) || !c.regex.length) continue;
-    const applicable = c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous';
-    if (!applicable) continue;
-    const type = catToType(c.category);
-    for (const p of c.regex) {
-      if (!p || !p.find) continue;
-      let gflags = p.flags || '';
-      if (!gflags.includes('g')) gflags += 'g';
-      const sflags = gflags.replace('g', '');
-      let re, sre;
-      try { re = new RegExp(p.find, gflags); sre = new RegExp(p.find, sflags); }
-      catch (e) { continue; }
-      const repl = p.replace != null ? p.replace : '';
-      for (const m of full.matchAll(re)) {
-        const matched = m[0];
-        if (!matched) continue;
-        const replaced = matched.replace(sre, repl);
-        if (replaced === matched) continue;
-        const s = m.index;
-        const li = leftAnchor(full, s, matched);
-        const left = full.slice(li, s);
-        out.push({
-          type,
-          code: c.code || '',
-          original: left + matched,
-          suggested: left + replaced,
-          reason: (p.label || 'correction déterministe') + ' [regex ' + (c.code || '') + ']',
-          deterministic: true,
-        });
-      }
-    }
-  }
-  return out;
-}
-
-// Fusionne regex (en premier, car garanties) puis Claude, en retirant les
-// doublons exacts. Les chevauchements de plage sont geres en aval par le moteur.
-function mergeDedup(regexCorr, claudeCorr) {
-  const norm = s => String(s || '')
-    .replace(/[\u00a0\s]+/g, ' ')
-    .replace(/[\u2019\u02bc\uff07\u2018]/g, "'")
-    .trim();
-  const seen = new Set();
-  const out = [];
-  const all = regexCorr.concat(Array.isArray(claudeCorr) ? claudeCorr : []);
-  for (const c of all) {
-    if (!c || !c.original) continue;
-    const key = norm(c.original) + '=>' + norm(c.suggested);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(c);
-  }
-  return out;
-}
-
-// --- Vérifications structurelles déterministes propres aux décisions (decision_ar) ---
-// Deux contrôles, validés sur le corpus des décisions exemplaires (zéro fausse alerte) :
-//  1) la chronologie des étapes procédurales (clauses « وبعد ») doit être croissante ;
-//  2) les sections présentes doivent apparaître dans l'ordre canonique.
-// Ces contrôles SIGNALENT (warnings) sans corriger : une date hors séquence peut venir
-// d'une date erronée ou d'un paragraphe déplacé, c'est au relecteur de trancher.
-
-const GREG_MONTHS = { "يناير":1,"فبراير":2,"مارس":3,"أبريل":4,"ابريل":4,"ماي":5,"مايو":5,"يونيو":6,"يونيه":6,"يوليوز":7,"يوليو":7,"غشت":8,"شتنبر":9,"سبتمبر":9,"أكتوبر":10,"اكتوبر":10,"نونبر":11,"نوفمبر":11,"دجنبر":12,"ديسمبر":12 };
-const GREG_MONTHS_RE = Object.keys(GREG_MONTHS).sort((a, b) => b.length - a.length).join('|');
-
-function normArabicDigits(s) {
+// Normalise les chiffres arabes (indo-arabes U+0660-0669 et leur variante
+// etendue U+06F0-06F9) en chiffres ASCII, et les separateurs/percent arabes.
+function normalizeDigits(s) {
   let out = '';
-  for (const ch of String(s)) {
+  for (const ch of String(s || '')) {
     const o = ch.codePointAt(0);
-    if (o >= 0x0660 && o <= 0x0669) out += String.fromCharCode(o - 0x0660 + 0x30);
-    else if (o >= 0x06F0 && o <= 0x06F9) out += String.fromCharCode(o - 0x06F0 + 0x30);
+    if (o >= 0x0660 && o <= 0x0669) out += String.fromCharCode(o - 0x0660 + 48);
+    else if (o >= 0x06F0 && o <= 0x06F9) out += String.fromCharCode(o - 0x06F0 + 48);
+    else if (o === 0x066B) out += '.';      // separateur decimal arabe
+    else if (o === 0x066C) out += ' ';      // separateur de milliers arabe
+    else if (o === 0x066A) out += '%';      // signe pourcent arabe ٪
     else out += ch;
   }
   return out;
 }
-function stripArabic(s) {
-  return String(s).replace(/[\u0640\u064B-\u0652\u0670]/g, '').replace(/[أإآ]/g, 'ا').replace(/\s+/g, ' ');
+
+// Signature d'un nombre : on ne garde que les chiffres, pour comparer la VALEUR
+// independamment du format (42,11 et 42.11 -> "4211").
+function digitSig(token) { return token.replace(/[^\d]/g, ''); }
+
+// Extrait le multiensemble des POURCENTAGES d'un texte (deja normalise).
+function extractPercents(text) {
+  const re = /(\d[\d.,\u00a0 ]*?)\s*%/g;
+  const map = new Map(); // signature -> { raw, count }
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const sig = digitSig(m[1]);
+    if (!sig) continue;
+    const raw = (m[1].trim() + ' %').replace(/\s+/g, ' ');
+    const e = map.get(sig) || { raw, count: 0 };
+    e.count++; map.set(sig, e);
+  }
+  return map;
 }
-function firstGregDate(s) {
-  const m = normArabicDigits(s).match(new RegExp('(\\d{1,2})\\s+(' + GREG_MONTHS_RE + ')\\s+(\\d{4})'));
-  if (!m) return null;
-  return { key: (+m[3]) * 10000 + GREG_MONTHS[m[2]] * 100 + (+m[1]), label: m[1] + ' ' + m[2] + ' ' + m[3] };
+
+// Compare les pourcentages des deux versions ; renvoie des ecarts deterministes.
+function comparePercents(textFr, textAr) {
+  const fr = extractPercents(normalizeDigits(textFr));
+  const ar = extractPercents(normalizeDigits(textAr));
+  const label = (m) => m.raw + (m.count > 1 ? ` (x${m.count})` : '');
+  const frOnly = [], arOnly = [];
+  for (const [sig, e] of fr) { const a = ar.get(sig); if (!a || a.count !== e.count) frOnly.push(e); }
+  for (const [sig, e] of ar) { if (!fr.has(sig)) arOnly.push(e); }
+
+  // Cas non ambigu (un seul ecart de chaque cote) : on apparie en une ligne.
+  if (frOnly.length === 1 && arOnly.length === 1) {
+    return [{
+      category: 'chiffre',
+      fr: label(frOnly[0]),
+      ar: label(arOnly[0]),
+      note: "Pourcentage différent entre les deux versions.",
+      severity: 'haute',
+      deterministic: true,
+    }];
+  }
+
+  // Sinon, on liste chaque ecart separement pour ne pas apparier a tort.
+  const out = [];
+  for (const e of frOnly) out.push({
+    category: 'chiffre', fr: label(e), ar: 'absent',
+    note: "Pourcentage présent en français, sans équivalent identique en arabe.",
+    severity: 'haute', deterministic: true,
+  });
+  for (const e of arOnly) out.push({
+    category: 'chiffre', fr: 'absent', ar: label(e),
+    note: "Pourcentage présent en arabe, sans équivalent identique en français.",
+    severity: 'haute', deterministic: true,
+  });
+  return out;
 }
-function runDecisionChecks(text) {
-  const warnings = [];
-  const paras = String(text || '').split('\n').map(p => p.trim()).filter(Boolean);
 
-  // 1) Chronologie des clauses « وبعد » avant le dispositif.
-  const seq = [];
-  for (const p of paras) {
-    if (p.includes('قرر ما يلي')) break;
-    const pn = stripArabic(p);
-    if (pn.startsWith('وبعد') || pn.startsWith('بعد')) {
-      const d = firstGregDate(p);
-      if (d) seq.push(d);
+function buildPrompt({ textFr, textAr, consignes }) {
+  const compareConsignes = (Array.isArray(consignes) ? consignes : [])
+    .filter(c => c.mode === 'compare' || c.doctype === 'bilingue')
+    .map(c => `[${c.code}] ${c.label}\n${String(c.text || '')}`)
+    .join('\n\n');
+
+  const fr = String(textFr || '').substring(0, MAX_DOC_CHARS);
+  const ar = String(textAr || '').substring(0, MAX_DOC_CHARS);
+
+  return `Tu es un expert du Conseil de la Concurrence marocain. On te donne la version FRANCAISE et la version ARABE d'un MEME communiqué de presse. Ta tache est de repérer les ECARTS entre les deux versions, c'est-à-dire les points où elles ne disent pas la même chose. Tu ne corriges PAS les fautes internes d'une version : tu compares les deux.
+
+POINTS A VERIFIER (consignes de cohérence bilingue) :
+${compareConsignes}
+
+CE QU'IL FAUT SIGNALER :
+- Chiffres différents entre FR et AR : montants de capital, parts, numéros de registre du commerce. (Les POURCENTAGES sont déjà vérifiés automatiquement par ailleurs ; inutile de les signaler ici, sauf s'ils sont liés à un autre écart.)
+- Date de clôture des observations différente entre FR et AR (compare jour, mois, année ; les noms de mois diffèrent selon la langue, c'est normal, compare la date réelle).
+- Qualification de l'opération différente (contrôle exclusif vs conjoint, création d'entreprise commune).
+- Terminologie incohérente avec les glossaires ci-dessus (un terme traduit autrement que la correspondance officielle).
+- Toute information présente dans une version et absente de l'autre.
+
+CE QU'IL NE FAUT PAS SIGNALER :
+- Les différences de FORMAT des références légales : la loi s'écrit « 104-12 » en français et « 104.12 » en arabe, le décret « 2-14-652 » puis « 2.14.652 ». Ce sont des conventions de langue, pas des écarts.
+- Les simples différences de tournure ou de style propres à chaque langue.
+
+VERSION FRANCAISE :
+${fr}
+
+VERSION ARABE :
+${ar}
+
+Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks :
+{
+  "discrepancies": [
+    {
+      "category": "chiffre|date|qualification|terminologie|autre",
+      "fr": "ce que dit la version française",
+      "ar": "ce que dit la version arabe",
+      "note": "explication courte de l'écart",
+      "severity": "haute|moyenne|basse"
     }
-  }
-  for (let i = 1; i < seq.length; i++) {
-    if (seq[i].key < seq[i - 1].key) {
-      warnings.push({ kind: 'chronologie', message: `Ordre chronologique rompu dans les visas : la date « ${seq[i].label} » apparaît après « ${seq[i - 1].label} » alors qu'elle lui est antérieure. Vérifier l'ordre des paragraphes ou la date.` });
-    }
-  }
+  ],
+  "summary": "synthèse de la cohérence bilingue en 2-3 phrases"
+}`;
+}
 
-  // 2) Ordre des sections présentes (on ne signale pas une section absente).
-  const MARKERS = [['ouverture', 'ان مجلس المنافسة'], ['visas', 'بناء على'], ['considérants', 'وحيث'], ['dispositif', 'قرر ما يلي'], ['délibération', 'تم التداول']];
-  const full = stripArabic(paras.join('\n'));
-  const present = [];
-  for (const [name, mk] of MARKERS) {
-    const i = full.indexOf(stripArabic(mk));
-    if (i >= 0) present.push({ name, i });
+function mergeDedup(deterministic, claudeList) {
+  const norm = s => String(s || '').replace(/[\u00a0\s]+/g, ' ').trim().toLowerCase();
+  const seen = new Set();
+  const out = [];
+  const all = deterministic.concat(Array.isArray(claudeList) ? claudeList : []);
+  for (const d of all) {
+    if (!d) continue;
+    const key = norm(d.category) + '|' + norm(d.fr) + '|' + norm(d.ar);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(d);
   }
-  for (let i = 1; i < present.length; i++) {
-    if (present[i].i < present[i - 1].i) {
-      warnings.push({ kind: 'structure', message: `Ordre des sections inhabituel : « ${present[i].name} » apparaît avant « ${present[i - 1].name} ».` });
-    }
-  }
-
-  // 3) Cohérence du numéro de dossier de notification (visas vs article premier).
-  const nums = [];
-  const normedFull = normArabicDigits(paras.join('\n'));
-  const reNum = /عدد\s*(\d+)\s*\/\s*ع/g;
-  let mm;
-  while ((mm = reNum.exec(normedFull)) !== null) nums.push(mm[1]);
-  const distinct = [...new Set(nums)];
-  if (distinct.length > 1) {
-    warnings.push({ kind: 'cohérence', message: `Numéro de dossier de notification incohérent : ${distinct.join(' / ')}. Il doit être identique dans les visas et dans l'article premier.` });
-  }
-
-  // 4) Conformité de structure de fond : présence des éléments attendus.
-  // La dérogation (exception au titre de l'art. 14, 2e alinéa) suit une trame
-  // allégée, sans définition de marché ni analyse concurrentielle.
-  const hasM = (...alts) => alts.some(a => full.includes(stripArabic(a)));
-  const need = (label, ok) => { if (!ok) warnings.push({ kind: 'conformité', message: `Élément de fond attendu absent : ${label}.` }); };
-  const isDerog = hasM('الاستثناء') && hasM('الفقرة الثانية من المادة 14', 'الفقرة 2 من المادة 14');
-
-  need("qualification au sens de l'article 11", hasM('المادة 11'));
-  need("seuils de l'article 12", hasM('المادة 12'));
-  if (isDerog) {
-    need('autorisation à titre exceptionnel (art. 14, 2e alinéa)', hasM('بصفة استثنائية'));
-  } else {
-    need('définition du marché pertinent', hasM('السوق المعنية', 'الأسواق المعنية', 'تحديد السوق', 'تحديد الأسواق'));
-    need('analyse des effets horizontaux', hasM('أفقي', 'الأفقية'));
-    need('analyse des effets verticaux', hasM('عمودي', 'العمودية'));
-    need('analyse des effets congloméraux', hasM('تكتل', 'التكتلية'));
-  }
-  need('dispositif — article premier (يستوفي الشروط القانونية)', hasM('يستوفي الشروط القانونية'));
-  need('dispositif — article deux (يرخص مجلس المنافسة)', hasM('يرخص مجلس المنافسة'));
-
-  return warnings;
+  return out;
 }
 
 export default async function handler(req, res) {
@@ -302,12 +160,13 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { text, docType, opts, consignes } = body;
-  if (!text || typeof text !== 'string') {
-    return res.status(400).json({ error: "Champ 'text' manquant ou invalide." });
+  const { textFr, textAr, consignes } = body;
+  if (!textFr || typeof textFr !== 'string' || !textAr || typeof textAr !== 'string') {
+    return res.status(400).json({ error: "Les deux textes (textFr et textAr) sont requis." });
   }
 
-  const prompt = buildPrompt({ text, docType: docType || 'cp_fr', opts: opts || {}, consignes });
+  const detPercents = comparePercents(textFr, textAr);
+  const prompt = buildPrompt({ textFr, textAr, consignes });
 
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -341,23 +200,16 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: "Réponse du modèle illisible (JSON invalide)." });
     }
 
-    // Passe regex deterministe + fusion avec les corrections de Claude.
-    const regexCorr = runRegexPass({ text, docType: docType || 'cp_fr', consignes });
-    const corrections = mergeDedup(regexCorr, parsed.corrections || []);
-
-    // Vérifications structurelles déterministes, uniquement pour les décisions.
-    const warnings = (docType === 'decision_ar') ? runDecisionChecks(text) : [];
+    const discrepancies = mergeDedup(detPercents, parsed.discrepancies || []);
 
     return res.status(200).json({
-      corrections,
-      synthese: parsed.synthese || '',
-      score: parsed.score,
-      deterministic: regexCorr.length,
-      warnings,
+      discrepancies,
+      summary: parsed.summary || '',
+      deterministic: detPercents.length,
     });
   } catch (e) {
-    return res.status(500).json({ error: "Erreur lors de l'analyse : " + e.message });
+    return res.status(500).json({ error: "Erreur lors de la comparaison : " + e.message });
   }
 }
 
-export { runRegexPass, leftAnchor, mergeDedup, catToType };
+export { normalizeDigits, extractPercents, comparePercents, digitSig };
