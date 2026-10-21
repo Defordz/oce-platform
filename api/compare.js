@@ -4,11 +4,65 @@
 // Meme modele de securite que /api/analyze : la cle reste cote serveur.
 
 import { requireAppPassword } from '../lib/auth.js';
+import { callStructured } from '../lib/anthropic.js';
+import { extractDates, computeDeadline, formatLongFR } from '../lib/dates.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
-const MODEL = 'claude-opus-4-5';
-const MAX_TOKENS = 4000;
-const MAX_DOC_CHARS = 15000;
+const MAX_TOKENS = 6000;
+const MAX_DOC_CHARS = 60000;
+
+// Outil impose au modele : sa reponse est toujours un objet conforme a ce schema.
+const COMPARE_TOOL = {
+  name: 'rapport_ecarts',
+  description: 'Renvoie les écarts relevés entre la version française et la version arabe, et une synthèse.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      discrepancies: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            category: { type: 'string', enum: ['chiffre', 'date', 'qualification', 'terminologie', 'autre'] },
+            fr: { type: 'string', description: 'Ce que dit la version française.' },
+            ar: { type: 'string', description: 'Ce que dit la version arabe.' },
+            note: { type: 'string', description: "Explication courte de l'écart." },
+            severity: { type: 'string', enum: ['haute', 'moyenne', 'basse'] },
+          },
+          required: ['category', 'fr', 'ar', 'note', 'severity'],
+        },
+      },
+      summary: { type: 'string', description: 'Synthèse de la cohérence bilingue en 2 ou 3 phrases.' },
+    },
+    required: ['discrepancies', 'summary'],
+  },
+};
+
+// Dates (publication et cloture) : comparaison FR/AR et controle de la regle
+// J+10 reportee au lundi, de maniere deterministe.
+function compareDates(textFr, textAr) {
+  const fr = extractDates(textFr, 'fr'), ar = extractDates(textAr, 'ar');
+  const lab = iso => (iso ? formatLongFR(iso) : 'absente ou illisible');
+  const out = [];
+  for (const [k, name] of [['publication', 'Date de publication'], ['deadline', 'Date limite des observations']]) {
+    if ((fr[k] || ar[k]) && fr[k] !== ar[k]) {
+      out.push({ category: 'date', fr: lab(fr[k]), ar: lab(ar[k]), note: `${name} différente entre les deux versions.`, severity: 'haute', deterministic: true });
+    }
+  }
+  for (const [version, d] of [['française', fr], ['arabe', ar]]) {
+    if (!d.publication || !d.deadline) continue;
+    const attendue = computeDeadline(d.publication);
+    if (attendue === d.deadline) continue;
+    out.push({
+      category: 'date',
+      fr: version === 'française' ? lab(d.deadline) : 'non concernée',
+      ar: version === 'arabe' ? lab(d.deadline) : 'non concernée',
+      note: `Version ${version} : date limite non conforme à la règle (publication le ${lab(d.publication)}, date limite attendue le ${lab(attendue)}).`,
+      severity: 'haute', deterministic: true,
+    });
+  }
+  return out;
+}
 
 function setCors(res) {
   if (ALLOWED_ORIGIN) res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
@@ -89,21 +143,20 @@ function comparePercents(textFr, textAr) {
 
 function buildPrompt({ textFr, textAr, consignes }) {
   const compareConsignes = (Array.isArray(consignes) ? consignes : [])
-    .filter(c => c.mode === 'compare' || c.doctype === 'bilingue')
+    .filter(c => c && c.active !== false && (c.mode === 'compare' || c.doctype === 'bilingue'))
     .map(c => `[${c.code}] ${c.label}\n${String(c.text || '')}`)
     .join('\n\n');
 
   const fr = String(textFr || '').substring(0, MAX_DOC_CHARS);
   const ar = String(textAr || '').substring(0, MAX_DOC_CHARS);
 
-  return `Tu es un expert du Conseil de la Concurrence marocain. On te donne la version FRANCAISE et la version ARABE d'un MEME communiqué de presse. Ta tache est de repérer les ECARTS entre les deux versions, c'est-à-dire les points où elles ne disent pas la même chose. Tu ne corriges PAS les fautes internes d'une version : tu compares les deux.
+  const system = `Tu es un expert du Conseil de la concurrence du Maroc. On te donne la version FRANCAISE et la version ARABE d'un MEME communiqué de presse. Ta tache est de repérer les ECARTS entre les deux versions, c'est-à-dire les points où elles ne disent pas la même chose. Tu ne corriges PAS les fautes internes d'une version : tu compares les deux.
 
 POINTS A VERIFIER (consignes de cohérence bilingue) :
 ${compareConsignes}
 
 CE QU'IL FAUT SIGNALER :
 - Chiffres différents entre FR et AR : montants de capital, parts, numéros de registre du commerce. (Les POURCENTAGES sont déjà vérifiés automatiquement par ailleurs ; inutile de les signaler ici, sauf s'ils sont liés à un autre écart.)
-- Date de clôture des observations différente entre FR et AR (compare jour, mois, année ; les noms de mois diffèrent selon la langue, c'est normal, compare la date réelle).
 - Qualification de l'opération différente (contrôle exclusif vs conjoint, création d'entreprise commune).
 - Terminologie incohérente avec les glossaires ci-dessus (un terme traduit autrement que la correspondance officielle).
 - Toute information présente dans une version et absente de l'autre.
@@ -111,26 +164,12 @@ CE QU'IL FAUT SIGNALER :
 CE QU'IL NE FAUT PAS SIGNALER :
 - Les différences de FORMAT des références légales : la loi s'écrit « 104-12 » en français et « 104.12 » en arabe, le décret « 2-14-652 » puis « 2.14.652 ». Ce sont des conventions de langue, pas des écarts.
 - Les simples différences de tournure ou de style propres à chaque langue.
+- Les DATES de publication et de clôture des observations : elles sont déjà vérifiées automatiquement par ailleurs.
 
-VERSION FRANCAISE :
-${fr}
+Renseigne ton résultat avec l'outil rapport_ecarts.`;
 
-VERSION ARABE :
-${ar}
-
-Réponds UNIQUEMENT en JSON valide, sans markdown, sans backticks :
-{
-  "discrepancies": [
-    {
-      "category": "chiffre|date|qualification|terminologie|autre",
-      "fr": "ce que dit la version française",
-      "ar": "ce que dit la version arabe",
-      "note": "explication courte de l'écart",
-      "severity": "haute|moyenne|basse"
-    }
-  ],
-  "summary": "synthèse de la cohérence bilingue en 2-3 phrases"
-}`;
+  const user = `VERSION FRANCAISE :\n${fr}\n\nVERSION ARABE :\n${ar}`;
+  return { system, user };
 }
 
 function mergeDedup(deterministic, claudeList) {
@@ -165,51 +204,20 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Les deux textes (textFr et textAr) sont requis." });
   }
 
-  const detPercents = comparePercents(textFr, textAr);
-  const prompt = buildPrompt({ textFr, textAr, consignes });
+  const deterministic = comparePercents(textFr, textAr).concat(compareDates(textFr, textAr));
+  const { system, user } = buildPrompt({ textFr, textAr, consignes });
 
   try {
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        temperature: 0,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-
-    if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      return res.status(502).json({ error: (err.error && err.error.message) || `Anthropic HTTP ${r.status}` });
-    }
-
-    const data = await r.json();
-    const rawText = (data.content && data.content[0] && data.content[0].text) || '';
-    const raw = rawText.trim().replace(/^```[\s\S]*?\n/, '').replace(/```[\s]*$/, '').trim();
-
-    let parsed;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      return res.status(502).json({ error: "Réponse du modèle illisible (JSON invalide)." });
-    }
-
-    const discrepancies = mergeDedup(detPercents, parsed.discrepancies || []);
-
+    const parsed = await callStructured({ apiKey, system, user, tool: COMPARE_TOOL, maxTokens: MAX_TOKENS });
+    const discrepancies = mergeDedup(deterministic, parsed.discrepancies || []);
     return res.status(200).json({
       discrepancies,
       summary: parsed.summary || '',
-      deterministic: detPercents.length,
+      deterministic: deterministic.length,
     });
   } catch (e) {
-    return res.status(500).json({ error: "Erreur lors de la comparaison : " + e.message });
+    return res.status(e.status || 500).json({ error: "Erreur lors de la comparaison : " + e.message });
   }
 }
 
-export { normalizeDigits, extractPercents, comparePercents, digitSig };
+export { normalizeDigits, extractPercents, comparePercents, digitSig, compareDates, buildPrompt };

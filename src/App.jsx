@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { nextThursday, computeDeadline, isThursday, formatLongFR } from "../lib/dates.js";
 
 // --- Mot de passe partage de l'application ---
 // Stocke en sessionStorage (efface a la fermeture de l'onglet) et joint a chaque
@@ -7,7 +8,8 @@ const PW_KEY = "oce_app_pw";
 const getPw = () => { try { return sessionStorage.getItem(PW_KEY) || ""; } catch { return ""; } };
 const setPw = v => { try { sessionStorage.setItem(PW_KEY, v); } catch {} };
 const clearPw = () => { try { sessionStorage.removeItem(PW_KEY); } catch {} };
-const authHeaders = () => { const p = getPw(); return p ? { "x-app-password": p } : {}; };
+// Encode : un en-tete HTTP refuse les caracteres accentues (mot de passe avec é, à, ç...).
+const authHeaders = () => { const p = getPw(); return p ? { "x-app-password": encodeURIComponent(p) } : {}; };
 
 // Logo du Conseil de la concurrence (PNG optimise, integre en base64).
 const LOGO_CC = "data:image/png;base64,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";
@@ -232,6 +234,14 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [fileContent, setFileContent] = useState("");
   const [fileBytes, setFileBytes] = useState(null);
   const [opts, setOpts] = useState({forme:true, fond:true, terminologie:true, bilingue:false});
+  // Dates du communique : publication le jeudi, date limite J+10 reportee au lundi.
+  const hasDates = cfg.docTypes.some(([id]) => id === "cp_fr" || id === "cp_ar");
+  const [dateOn, setDateOn] = useState(true);
+  const [pubDate, setPubDate] = useState(() => nextThursday());
+  const [deadline, setDeadline] = useState(() => computeDeadline(nextThursday()));
+  const [deadlineManual, setDeadlineManual] = useState(false);
+  const onPubChange = v => { setPubDate(v); if (!deadlineManual) setDeadline(computeDeadline(v)); };
+  const recalcDeadline = () => { setDeadline(computeDeadline(pubDate)); setDeadlineManual(false); };
   const [phase, setPhase] = useState("idle");
   const [loadStep, setLoadStep] = useState(0);
   const [corrections, setCorrections] = useState([]);
@@ -308,7 +318,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ text, docType, opts, consignes }),
+        body: JSON.stringify({ text, docType, opts, consignes, dates: (hasDates && dateOn && pubDate) ? { publication: pubDate, deadline } : null }),
       });
 
       if (!res.ok) {
@@ -555,6 +565,40 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
               ))}
             </div>
           </Card>
+
+          {hasDates && (
+          <Card>
+            <SLabel>Dates du communiqué</SLabel>
+            <div onClick={() => setDateOn(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${dateOn?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:dateOn?"#f0f4ff":"#fff",marginBottom:dateOn?8:0,transition:"all .15s"}}>
+              <div style={{width:15,height:15,border:`1.5px solid ${dateOn?C.navy2:C.border2}`,borderRadius:4,background:dateOn?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {dateOn && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:C.text}}>Insérer ou rectifier les dates</div>
+                <div style={{fontSize:10,color:C.text3,marginTop:1}}>« Fait à Rabat, le… » et « soit le… », en suivi des modifications</div>
+              </div>
+            </div>
+            {dateOn && (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date de publication</div>
+                  <input type="date" value={pubDate} onChange={e => onPubChange(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:12,color:C.text,boxSizing:"border-box"}}/>
+                  <div style={{fontSize:10,marginTop:3,color:pubDate && !isThursday(pubDate)?C.amber:C.text3}}>{formatLongFR(pubDate)}{pubDate && !isThursday(pubDate) ? " · ce n'est pas un jeudi" : ""}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date limite des observations</div>
+                  <input type="date" value={deadline} onChange={e => { setDeadline(e.target.value); setDeadlineManual(true); }} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:12,color:C.text,boxSizing:"border-box"}}/>
+                  <div style={{fontSize:10,marginTop:3,color:C.text3}}>
+                    {formatLongFR(deadline)}{" · "}
+                    {deadlineManual
+                      ? <span onClick={recalcDeadline} style={{color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>recalculer</span>
+                      : "J+10, reportée au lundi si week-end"}
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+          )}
 
           <Card>
             <SLabel>Options de correction</SLabel>
