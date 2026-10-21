@@ -352,6 +352,31 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   // Splice cible : remplace la plage brute [start,end) du paragraphe par une
   // suppression (texte supprime) et/ou une insertion, en preservant la mise en
   // forme et les runs voisins. end==start => insertion pure ; ins vide => suppression pure.
+  // Orientation du texte dans les documents arabes : chaque run porte ou non la
+  // marque de droite a gauche <w:rtl/>. Un texte insere ou supprime recoit
+  // l'orientation de son CONTENU (arabe : droite a gauche ; latin : gauche a
+  // droite ; chiffres ou ponctuation seuls : celle du run d'origine), au lieu
+  // d'heriter aveuglement de celle du run voisin. Sans cela, une date arabe
+  // inseree pres de pointilles s'affichait a l'envers (annee en tete) et un
+  // « SARLAU » insere pres d'un guillemet passait devant le nom de la societe.
+  const AR_CHARS = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  const LATIN_CHARS = /[A-Za-z\u00C0-\u024F]/;
+  const RTL_TAG_SRC = "<w:rtl(?:\\s+w:val=\"[^\"]*\")?\\s*\\/>";
+  const textDir = t => AR_CHARS.test(t) ? "rtl" : LATIN_CHARS.test(t) ? "ltr" : null;
+  const isRtlRpr = rpr => { const m = rpr.match(new RegExp(RTL_TAG_SRC)); return !!m && !/w:val="(?:0|false|off)"/.test(m[0]); };
+  const rprWithDir = (rpr, text) => {
+    const dir = textDir(text);
+    if (!dir || isRtlRpr(rpr) === (dir === "rtl")) return rpr;
+    let r = rpr.replace(new RegExp(RTL_TAG_SRC, "g"), "");
+    if (dir === "rtl") {
+      if (!r) return "<w:rPr><w:rtl/></w:rPr>";
+      // Ordre impose par le schema Word : <w:rtl/> precede <w:cs/>, <w:em>, <w:lang>...
+      const m = r.match(/<w:(?:cs|em|lang|eastAsianLayout|specVanish|oMath)\b/);
+      r = m ? r.slice(0, m.index) + "<w:rtl/>" + r.slice(m.index) : r.replace("</w:rPr>", "<w:rtl/></w:rPr>");
+    }
+    return r === "<w:rPr></w:rPr>" ? "" : r;
+  };
+
   const spliceRange = (paraXml, combined, start, end, ins, changeId, date) => {
     const RUN_RE = new RegExp(RUN_RE_SRC, "g");
     const runs = [...paraXml.matchAll(RUN_RE)];
@@ -371,8 +396,9 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     if (eR === null) eR = sR;
     if (eR < sR) eR = sR;
 
-    const rprMatch = runs[sR][0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/);
-    const rpr = rprMatch ? rprMatch[0] : "";
+    const rprOf = run => { const m = run[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/); return m ? m[0] : ""; };
+    const rpr = rprOf(runs[sR]);          // mise en forme du debut de la plage
+    const rprEnd = rprOf(runs[eR]);       // mise en forme de la fin (texte conserve apres)
     const spanStart = texts.slice(0, sR).join("").length;
     const spanEnd = texts.slice(0, eR + 1).join("").length;
     const rawDel = combined.slice(start, end);
@@ -381,9 +407,9 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
     let out = "";
     if (pre) out += `<w:r>${rpr}<w:t xml:space="preserve">${escXml(pre)}</w:t></w:r>`;
-    if (rawDel) out += `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:delText xml:space="preserve">${escXml(rawDel)}</w:delText></w:r></w:del>`;
-    if (ins) out += `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rpr}<w:t xml:space="preserve">${escXml(ins)}</w:t></w:r></w:ins>`;
-    if (post) out += `<w:r>${rpr}<w:t xml:space="preserve">${escXml(post)}</w:t></w:r>`;
+    if (rawDel) out += `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rprWithDir(rpr, rawDel)}<w:delText xml:space="preserve">${escXml(rawDel)}</w:delText></w:r></w:del>`;
+    if (ins) out += `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rprWithDir(rpr, ins)}<w:t xml:space="preserve">${escXml(ins)}</w:t></w:r></w:ins>`;
+    if (post) out += `<w:r>${rprEnd}<w:t xml:space="preserve">${escXml(post)}</w:t></w:r>`;
 
     const firstStart = runs[sR].index;
     const lastEnd = runs[eR].index + runs[eR][0].length;
