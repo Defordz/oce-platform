@@ -8,7 +8,7 @@ import { callStructured } from '../lib/anthropic.js';
 import { extractDates, computeDeadline, formatLongFR } from '../lib/dates.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
-const MAX_TOKENS = 6000;
+const MAX_TOKENS = 12000;
 const MAX_DOC_CHARS = 60000;
 
 // Outil impose au modele : sa reponse est toujours un objet conforme a ce schema.
@@ -216,7 +216,7 @@ export default async function handler(req, res) {
       deterministic: deterministic.length,
     });
   } catch (e) {
-    return res.status(e.status || 500).json({ error: "Erreur lors de la comparaison : " + e.message });
+    return res.status(e.status || 500).json({ error: e.message });
   }
 }
 

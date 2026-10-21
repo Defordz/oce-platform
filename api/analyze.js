@@ -8,7 +8,7 @@ import { callStructured } from '../lib/anthropic.js';
 import { runDatePass } from '../lib/dates.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
-const MAX_TOKENS = 8000;
+const MAX_TOKENS = 16000;
 const MAX_DOC_CHARS = 100000;
 
 const TYPE_LABELS = {
@@ -375,7 +375,7 @@ export default async function handler(req, res) {
       warnings,
     });
   } catch (e) {
-    return res.status(e.status || 500).json({ error: "Erreur lors de l'analyse : " + e.message });
+    return res.status(e.status || 500).json({ error: e.message });
   }
 }
 
