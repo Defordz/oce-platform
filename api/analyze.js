@@ -74,6 +74,11 @@ function buildPrompt({ text, docType, opts, consignes }) {
     if (c.examples) s += `\nExemples : ${String(c.examples).trim()}`;
     return s;
   };
+  // Regles automatiques actives : rappelees au modele pour qu'il ne les contredise pas.
+  const rulesC = (Array.isArray(consignes) ? consignes : [])
+    .filter(c => c && c.active !== false && Array.isArray(c.regex) && c.regex.length && c.mode === 'regex' &&
+      (c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous'))
+    .map(c => `- [${c.code}] ${c.label} : ${String(c.text || '').trim()}`).join('\n');
   const cat = k => String(k || '').toUpperCase();
   const formeC = applicable.filter(c => cat(c.category) === 'FORME').map(fmt).join('\n\n');
   const fondC = applicable.filter(c => cat(c.category) === 'FOND').map(fmt).join('\n\n');
@@ -113,6 +118,7 @@ RÈGLES IMPORTANTES :
 - Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met".
 - Relève TOUTES les occurrences de chaque type d'erreur dans tout le document.
 - Les corrections purement mécaniques (espaces de guillemets, accords simples, numéros de loi et de décret, noms de pays des adresses) sont déjà appliquées automatiquement par ailleurs : concentre-toi sur ce qui demande du jugement.
+- Les formes fixées par les règles automatiques ci-dessous font foi, même si une autre forme te paraît plus correcte : ne propose JAMAIS de les modifier ni d'y revenir.${rulesC ? `\n${rulesC}` : ''}
 - Les DATES de publication et de clôture des observations sont vérifiées et corrigées automatiquement par ailleurs : ne propose AUCUNE correction portant sur ces dates.
 - "code" est EXACTEMENT l'un des codes de consignes listés plus haut (ex: F-03, D-04, T-01), ou une chaîne vide. N'invente JAMAIS un code.
 - N'invente pas d'erreur : en cas de doute, ne corrige pas.
@@ -215,6 +221,43 @@ function runRegexPass({ text, docType, consignes }) {
         });
       }
     }
+  }
+  return out;
+}
+
+// Applique les regles automatiques (consignes regex actives) a un texte libre.
+function applyRules(str, docType, consignes) {
+  let out = String(str || '');
+  for (const c of (Array.isArray(consignes) ? consignes : [])) {
+    if (!c || c.active === false || !Array.isArray(c.regex) || !c.regex.length) continue;
+    if (!(c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous')) continue;
+    for (const p of c.regex) {
+      if (!p || !p.find) continue;
+      let flags = p.flags || ''; if (!flags.includes('g')) flags += 'g';
+      let re; try { re = new RegExp(p.find, flags); } catch (e) { continue; }
+      const repl = p.replace != null ? p.replace : '';
+      out = out.replace(re, (...a) => {
+        const named = typeof a[a.length - 1] === 'object' && a[a.length - 1] !== null ? a[a.length - 1] : undefined;
+        const m = a.slice(0, a.length - (named ? 3 : 2)); m.groups = named;
+        return expandReplacement(repl, m);
+      });
+    }
+  }
+  return out;
+}
+
+// Les suggestions du modele ne peuvent jamais contredire une regle automatique :
+// chaque suggestion est harmonisee avec ces regles (ex. « ذات مسؤولية محدودة »
+// ramene a « ذات المسؤولية المحدودة », « prise du contrôle » a « prise de
+// contrôle ») ; celle qui ne change plus rien est ecartee.
+function harmonizeWithRules(claudeCorr, docType, consignes) {
+  const norm = s => String(s || '').replace(/[\u00a0\s]+/g, ' ').trim();
+  const out = [];
+  for (const c of (Array.isArray(claudeCorr) ? claudeCorr : [])) {
+    if (!c || !c.original) continue;
+    const suggested = applyRules(c.suggested, docType, consignes);
+    if (norm(suggested) === norm(c.original)) continue;
+    out.push(suggested === c.suggested ? c : { ...c, suggested });
   }
   return out;
 }
@@ -362,7 +405,8 @@ export default async function handler(req, res) {
     const datePass = runDatePass({ text, docType, dates });
     const regexCorr = runRegexPass({ text, docType, consignes });
     const deterministic = datePass.corrections.concat(regexCorr);
-    const corrections = mergeDedup(deterministic, parsed.corrections || []);
+    const claudeCorr = harmonizeWithRules(parsed.corrections || [], docType, consignes);
+    const corrections = mergeDedup(deterministic, claudeCorr);
 
     // Verifications structurelles : decisions, et coherence des dates des communiques.
     const warnings = ((docType === 'decision_ar') ? runDecisionChecks(text) : []).concat(datePass.warnings);
@@ -379,4 +423,4 @@ export default async function handler(req, res) {
   }
 }
 
-export { runRegexPass, leftAnchor, mergeDedup, catToType, buildPrompt, expandReplacement };
+export { runRegexPass, leftAnchor, mergeDedup, catToType, buildPrompt, expandReplacement, applyRules, harmonizeWithRules };
