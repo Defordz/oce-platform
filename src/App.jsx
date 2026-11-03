@@ -175,6 +175,15 @@ function diffIslands(a, b) {
   // prefixe commun qui couperait la marque de revision au milieu d'un mot.
   if (a && b.length > a.length && b.endsWith(a) && /\n\s*$|\s$/.test(b.slice(0, b.length - a.length))) return [{ start: 0, del: "", ins: b.slice(0, b.length - a.length) }];
   if (a && b.length > a.length && b.startsWith(a) && /^\s/.test(b.slice(a.length))) return [{ start: a.length, del: "", ins: b.slice(a.length) }];
+  // Ligne ajoutee en tete (« الفاضل المحترم⏎ » + qualite corrigee) : la ligne
+  // entiere est une insertion, puis la qualite est comparee a l'original. Evite
+  // une marque qui partage « ال » avec « السيدة » et coupe la ligne au milieu.
+  if (a && !a.includes("\n") && b.includes("\n")) {
+    const k = b.lastIndexOf("\n");
+    const head = b.slice(0, k + 1), rest = diffIslands(a, b.slice(k + 1));
+    if (rest.length && rest[0].start === 0) { rest[0].ins = head + rest[0].ins; return rest; }
+    return [{ start: 0, del: "", ins: head }, ...rest];
+  }
   const isApos = c => c === "\u0027" || c === "\u2019" || c === "\u02bc" || c === "\uff07" || c === "\u2018";
   const eq = (x, y) => x === y || (isApos(x) && isApos(y));
   const n = a.length, m = b.length;
