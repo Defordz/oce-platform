@@ -1,5 +1,15 @@
 import { useState, useRef, useEffect } from "react";
-import { nextThursday, computeDeadline, isThursday, formatLongFR } from "../lib/dates.js";
+import { nextThursday, computeDeadline, isThursday, formatLongFR, toISO, addDays, weekday } from "../lib/dates.js";
+import { holidayOn } from "../lib/feries.js";
+import { DELAI_AUDITION_LEGAL, DELAI_REPONSE_MIN } from "../lib/lettres.js";
+
+// Prochain jour ouvré (aujourd'hui compris) : ni samedi, ni dimanche, ni jour férié.
+const nextWorkingDay = () => {
+  const t = new Date();
+  let d = new Date(Date.UTC(t.getFullYear(), t.getMonth(), t.getDate()));
+  for (let i = 0; i < 15; i++) { const iso = toISO(d); if (![0, 6].includes(weekday(iso)) && !holidayOn(iso)) return iso; d = addDays(d, 1); }
+  return toISO(d);
+};
 
 // --- Mot de passe partage de l'application ---
 // Stocke en sessionStorage (efface a la fermeture de l'onglet) et joint a chaque
@@ -53,7 +63,7 @@ Le Conseil de la Concurrence a reçu la notification d'une opération de projet 
 
 Fait à Rabat le 23 avril 2026`;
 
-const TYPE_LABELS = {cp_fr:"CP Français",cp_ar:"بلاغ AR",bilingue:"Bilingue",decision_ar:"Décision AR",tous:"Tous"};
+const TYPE_LABELS = {cp_fr:"CP Français",cp_ar:"بلاغ AR",bilingue:"Bilingue",decision_ar:"Décision AR",lettre_ar:"Lettre AR",lettre_fr:"Lettre FR",lettres:"Lettres (FR et AR)",tous:"Tous"};
 const CAT_BG = {FORME:"#dbeafe",FOND:"#fdf5e0",TERMINOLOGIE:"#e8f5ec",BILINGUE:"#f0e8f8"};
 const CAT_FG = {FORME:"#1e40af",FOND:"#7a4a00",TERMINOLOGIE:"#1a5c2a",BILINGUE:"#4a1a6e"};
 const TYPE_BORDER = {forme:"#3b82f6",fond:C.gold,terminologie:C.green,bilingue:C.purple};
@@ -96,6 +106,7 @@ function Sidebar({page, setPage}) {
       <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Rapporteur</div>
       {item("correction","📝","Corriger les communiqués")}
       {item("decisions","⚖️","Corriger les décisions")}
+      {item("lettres","✉️","Corriger les lettres")}
       {item("comparaison","🔀","Comparaison FR / AR")}
       {item("historique","🕐","Historique")}
       <div style={{height:1,background:"rgba(255,255,255,.08)",margin:"7px 14px"}}/>
@@ -225,6 +236,14 @@ const CORRECTION_VARIANTS = {
     defaultType: "decision_ar",
     allowDemo: false,
   },
+  lettre: {
+    title: "Corriger les lettres",
+    sub: "Import de la lettre · Contrôle des dates et des délais · Export Word avec suivi des modifications",
+    docTypes: [["lettre_ar","رسالة AR","المراسلة بالعربية"],["lettre_fr","Lettre FR","Courrier en français"]],
+    defaultType: "lettre_ar",
+    allowDemo: false,
+    letters: true,
+  },
 };
 
 function CorrectionPage({consignes, history, setHistory, variant}) {
@@ -251,6 +270,10 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [error, setError] = useState("");
   const [notApplied, setNotApplied] = useState([]);
   const [warnings, setWarnings] = useState([]);
+  // Lettres : date d'envoi prevue (base des delais) et verification en ligne des denominations.
+  const [envoi, setEnvoi] = useState(() => nextWorkingDay());
+  const [verifierEnLigne, setVerifierEnLigne] = useState(true);
+  const [verifications, setVerifications] = useState([]);
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -304,8 +327,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
   const analyze = async () => {
     const text = fileContent || (cfg.allowDemo ? DEMO_TEXT : "");
-    if (!text) { setError("Veuillez d'abord charger une décision (.docx)."); return; }
-    setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]); setWarnings([]);
+    if (!text) { setError("Veuillez d'abord charger un document (.docx)."); return; }
+    setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]); setWarnings([]); setVerifications([]);
 
     // Animate steps
     for (let i = 0; i < steps.length; i++) {
@@ -318,7 +341,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ text, docType, opts, consignes, dates: (hasDates && dateOn && pubDate) ? { publication: pubDate, deadline } : null }),
+        body: JSON.stringify({ text, docType, opts, consignes, dates: (hasDates && dateOn && pubDate) ? { publication: pubDate, deadline } : null,
+          ...(cfg.letters ? { envoi, verifierEnLigne } : {}) }),
       });
 
       if (!res.ok) {
@@ -331,6 +355,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       setCorrections(parsed.corrections || []);
       setSynthese(parsed.synthese || "");
       setWarnings(parsed.warnings || []);
+      setVerifications(parsed.verifications || []);
       setScore(parsed.score);
       setHistory(h => [{id:Date.now(),file:fileName||"Document démo",type:docType,corrections:(parsed.corrections||[]).length,score:parsed.score,date:new Date().toLocaleDateString("fr-FR"),data:parsed.corrections,synthese:parsed.synthese},...h]);
     } catch (err) {
@@ -626,6 +651,29 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
           </Card>
           )}
 
+          {cfg.letters && (
+          <Card>
+            <SLabel>Envoi et contrôles</SLabel>
+            <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date d'envoi prévue</div>
+            <input type="date" value={envoi} onChange={e => setEnvoi(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:12,color:C.text,boxSizing:"border-box"}}/>
+            <div style={{fontSize:10,marginTop:3,color:envoi && ([0,6].includes(weekday(envoi)) || holidayOn(envoi))?C.amber:C.text3}}>
+              {formatLongFR(envoi)}{envoi && [0,6].includes(weekday(envoi)) ? " · week-end" : ""}{envoi && holidayOn(envoi) ? ` · jour férié (${holidayOn(envoi).nom})` : ""}
+            </div>
+            <div style={{fontSize:10.5,color:C.text3,lineHeight:1.5,margin:"8px 0"}}>
+              Contrôlés à partir de cette date : convocation au moins {DELAI_AUDITION_LEGAL} jours avant l'audition (décret n° 2.14.652, art. 18), réponse au moins {DELAI_REPONSE_MIN} jours après l'envoi, jamais un week-end ni un jour férié, références antérieures à l'envoi.
+            </div>
+            <div onClick={() => setVerifierEnLigne(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${verifierEnLigne?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:verifierEnLigne?"#f0f4ff":"#fff",transition:"all .15s"}}>
+              <div style={{width:15,height:15,border:`1.5px solid ${verifierEnLigne?C.navy2:C.border2}`,borderRadius:4,background:verifierEnLigne?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {verifierEnLigne && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:C.text}}>Vérifier en ligne les dénominations</div>
+                <div style={{fontSize:10,color:C.text3,marginTop:1}}>Intitulés des ministères et organismes, qualité des destinataires · 3 recherches au plus, sources citées</div>
+              </div>
+            </div>
+          </Card>
+          )}
+
           <Card>
             <SLabel>Options de correction</SLabel>
             {[["forme","Corrections de forme","Orthographe, syntaxe, typographie"],["fond","Corrections de fond","Qualification juridique, structure"],["terminologie","Terminologie consacrée","Termes loi n°104-12"]].map(([k,label,sub]) => (
@@ -687,6 +735,19 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 </div>
                 <div style={{fontSize:11.5,color:C.text2,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>{synthese}</div>
               </Card>
+
+              {verifications.length > 0 && (
+              <Card>
+                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:8}}>Dénominations vérifiées en ligne ({verifications.length})</div>
+                {verifications.map((v,i) => (
+                  <div key={i} style={{fontSize:11.5,color:C.text,lineHeight:1.5,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:5,unicodeBidi:"plaintext"}}>
+                    <span style={{fontWeight:600,color:v.statut==="confirme"?C.green:v.statut==="a_corriger"?C.amber:C.text3}}>{v.statut==="confirme"?"Confirmé":v.statut==="a_corriger"?"À corriger":"Non vérifié"}</span>
+                    {" · "}{v.entite}{v.explication ? ` : ${v.explication}` : ""}
+                    {v.source_url && <> · <a href={v.source_url} target="_blank" rel="noopener noreferrer" style={{color:C.navy2}}>{v.source_titre || "source"}</a></>}
+                  </div>
+                ))}
+              </Card>
+              )}
 
               {warnings.length > 0 && (
               <Card>
@@ -1070,7 +1131,7 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}>
                 <FInput label="Code" field="code" ph="ex : F-01" form={form} setForm={setForm}/>
-                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["tous","Tous types"]]} form={form} setForm={setForm}/>
+                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["lettre_ar","Lettre AR"],["lettre_fr","Lettre FR"],["lettres","Lettres (FR et AR)"],["tous","Tous types"]]} form={form} setForm={setForm}/>
                 <div>
                 <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Catégorie</div>
                 <select value={form.category||""} onChange={e => {
@@ -1468,6 +1529,7 @@ export default function App() {
         <main style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="decisions"     && <CorrectionPage variant="decision" consignes={consignes} history={history} setHistory={setHistory}/>}
+          {page==="lettres"       && <CorrectionPage variant="lettre" consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="comparaison"   && <ComparaisonPage consignes={consignes}/>}
           {page==="historique"    && <HistoriquePage history={history}/>}
           {page==="dashboard"     && <DashboardPage history={history}/>}

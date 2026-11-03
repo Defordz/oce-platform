@@ -6,6 +6,8 @@
 import { requireAppPassword } from '../lib/auth.js';
 import { callStructured } from '../lib/anthropic.js';
 import { runDatePass } from '../lib/dates.js';
+import { runLetterChecks } from '../lib/lettres.js';
+import { verifyEntities } from '../lib/verify.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MAX_TOKENS = 16000;
@@ -15,8 +17,22 @@ const TYPE_LABELS = {
   cp_fr: 'communiqué de presse en français',
   cp_ar: 'communiqué de presse en arabe (بلاغ)',
   decision_ar: 'décision du Conseil en arabe (قرار)',
+  lettre_ar: 'lettre du Conseil en arabe (مراسلة)',
+  lettre_fr: 'lettre du Conseil en français',
   bilingue: 'document bilingue',
 };
+const isLetter = t => /^lettre_/.test(String(t || ''));
+
+// Consigne applicable a un type de document. Les lettres recoivent leurs
+// consignes propres (lettre_fr / lettre_ar), les regles communes ('lettres')
+// et les regles generales ('tous'), jamais les correspondances bilingues des
+// communiques.
+function appliesTo(c, docType) {
+  if (!c) return false;
+  if (c.doctype === docType || c.doctype === 'tous') return true;
+  if (isLetter(docType)) return c.doctype === 'lettres';
+  return c.doctype === 'bilingue';
+}
 const SCOPE_LABELS = {
   titre: 'le titre', resume: 'le résumé non confidentiel', rubriques: 'les rubriques du tableau',
   tableau: 'les rubriques du tableau', formules: "les formules d'ouverture", tout: 'tout le document',
@@ -63,8 +79,7 @@ function buildPrompt({ text, docType, opts, consignes }) {
   // mecaniques sont garanties par la passe deterministe, inutile de les
   // soumettre a Claude (ce qui creerait des doublons).
   const applicable = (Array.isArray(consignes) ? consignes : [])
-    .filter(c => c && c.active !== false && c.mode !== 'regex' &&
-      (c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous'));
+    .filter(c => c && c.active !== false && c.mode !== 'regex' && appliesTo(c, docType));
 
   // Met en forme une consigne avec son contenu COMPLET (texte, perimetre, exemples).
   const fmt = c => {
@@ -76,8 +91,7 @@ function buildPrompt({ text, docType, opts, consignes }) {
   };
   // Regles automatiques actives : rappelees au modele pour qu'il ne les contredise pas.
   const rulesC = (Array.isArray(consignes) ? consignes : [])
-    .filter(c => c && c.active !== false && Array.isArray(c.regex) && c.regex.length && c.mode === 'regex' &&
-      (c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous'))
+    .filter(c => c && c.active !== false && Array.isArray(c.regex) && c.regex.length && c.mode === 'regex' && appliesTo(c, docType))
     .map(c => `- [${c.code}] ${c.label} : ${String(c.text || '').trim()}`).join('\n');
   const cat = k => String(k || '').toUpperCase();
   const formeC = applicable.filter(c => cat(c.category) === 'FORME').map(fmt).join('\n\n');
@@ -100,17 +114,29 @@ TERMINOLOGIE CONSACRÉE (termes et correspondances officiels à respecter) :
 ${termC}
 ` : '';
 
+  const structure = isLetter(docType) ? `REPÈRES DE STRUCTURE D'UNE LETTRE (pour le périmètre des consignes) :
+- DESTINATAIRE : qualité, entité et ville du destinataire, en tête de lettre (« الفاضل المحترم / السيد وزير … / - الرباط - » ; « À l'attention de Maître … »).
+- RUBRIQUES : « الموضوع » / « المرجع » / « المرفقات » (« Objet » / « Référence » / « P.J. »).
+- OUVERTURE : « سلام تام بوجود مولانا الإمام، » puis « وبعد، » (lettre arabe) ; l'appel (« Maître, », « Madame la Ministre, ») dans une lettre française.
+- CORPS : contexte, fondement juridique, demande, modalités (date, heure, lieu, délai, adresse électronique).
+- CLÔTURE : la formule de politesse finale.
+Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.` : `REPÈRES DE STRUCTURE (pour le périmètre des consignes) :
+- TITRE : le texte qui précède la formule d'ouverture (« Conformément à l'article 13… » ou « طبقا للمادة 13… »).
+- RUBRIQUES DU TABLEAU : « Noms des entreprises et groupes concernés », « L'acquéreur », « La cible », « Nature de l'opération », « Secteurs économiques concernés », « Délai… », et leurs équivalents arabes.
+- RÉSUMÉ NON CONFIDENTIEL : de « RÉSUMÉ NON CONFIDENTIEL DE L'OPÉRATION FOURNI PAR LES PARTIES » (« ملخص غير سري للعملية مسلم من قبل الأطراف ») jusqu'à « Fait à Rabat » (« حرر في الرباط »).
+Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`;
+  const datesRule = isLetter(docType)
+    ? `- Les DATES de la lettre (jour de la semaine, jours fériés, délai de convocation, délai de réponse, chronologie des courriers et décisions cités) sont contrôlées automatiquement par ailleurs : ne propose AUCUNE correction portant sur une date.
+- Les dénominations officielles des entités et les qualités des destinataires sont vérifiées en ligne par ailleurs : ne corrige une dénomination que si l'erreur est manifeste dans le texte lui-même (grammaire, incohérence entre deux passages).`
+    : `- Les DATES de publication et de clôture des observations sont vérifiées et corrigées automatiquement par ailleurs : ne propose AUCUNE correction portant sur ces dates.`;
+
   // Partie FIXE (identique d'une analyse a l'autre pour un meme type) : mise en cache.
   const system = `Tu es un expert en correction de documents juridiques du Conseil de la concurrence du Maroc (loi n°104-12 relative à la liberté des prix et de la concurrence).
 Tu analyses un document et tu relèves TOUTES les erreurs qu'il contient, en appliquant strictement les consignes ci-dessous.
 
 Type de document : ${TYPE_LABELS[docType] || docType}
 
-REPÈRES DE STRUCTURE (pour le périmètre des consignes) :
-- TITRE : le texte qui précède la formule d'ouverture (« Conformément à l'article 13… » ou « طبقا للمادة 13… »).
-- RUBRIQUES DU TABLEAU : « Noms des entreprises et groupes concernés », « L'acquéreur », « La cible », « Nature de l'opération », « Secteurs économiques concernés », « Délai… », et leurs équivalents arabes.
-- RÉSUMÉ NON CONFIDENTIEL : de « RÉSUMÉ NON CONFIDENTIEL DE L'OPÉRATION FOURNI PAR LES PARTIES » (« ملخص غير سري للعملية مسلم من قبل الأطراف ») jusqu'à « Fait à Rabat » (« حرر في الرباط »).
-Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.
+${structure}
 ${formeInstructions}${fondInstructions}${terminologieInstructions}
 RÈGLES IMPORTANTES :
 - "original" contient EXACTEMENT le texte tel qu'il apparaît dans le document, mot pour mot, sur UNE SEULE ligne (jamais à cheval sur deux lignes).
@@ -119,7 +145,7 @@ RÈGLES IMPORTANTES :
 - Relève TOUTES les occurrences de chaque type d'erreur dans tout le document.
 - Les corrections purement mécaniques (espaces de guillemets, accords simples, numéros de loi et de décret, noms de pays des adresses) sont déjà appliquées automatiquement par ailleurs : concentre-toi sur ce qui demande du jugement.
 - Les formes fixées par les règles automatiques ci-dessous font foi, même si une autre forme te paraît plus correcte : ne propose JAMAIS de les modifier ni d'y revenir.${rulesC ? `\n${rulesC}` : ''}
-- Les DATES de publication et de clôture des observations sont vérifiées et corrigées automatiquement par ailleurs : ne propose AUCUNE correction portant sur ces dates.
+${datesRule}
 - "code" est EXACTEMENT l'un des codes de consignes listés plus haut (ex: F-03, D-04, T-01), ou une chaîne vide. N'invente JAMAIS un code.
 - N'invente pas d'erreur : en cas de doute, ne corrige pas.
 - Renseigne ton résultat avec l'outil rapport_corrections : synthèse en 2 ou 3 phrases et note de 1 à 10.`;
@@ -192,8 +218,7 @@ function runRegexPass({ text, docType, consignes }) {
   for (const c of list) {
     if (!c || c.active === false) continue;
     if (!Array.isArray(c.regex) || !c.regex.length) continue;
-    const applicable = c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous';
-    if (!applicable) continue;
+    if (!appliesTo(c, docType)) continue;
     const type = catToType(c.category);
     for (const p of c.regex) {
       if (!p || !p.find) continue;
@@ -230,7 +255,7 @@ function applyRules(str, docType, consignes) {
   let out = String(str || '');
   for (const c of (Array.isArray(consignes) ? consignes : [])) {
     if (!c || c.active === false || !Array.isArray(c.regex) || !c.regex.length) continue;
-    if (!(c.doctype === docType || c.doctype === 'bilingue' || c.doctype === 'tous')) continue;
+    if (!appliesTo(c, docType)) continue;
     for (const p of c.regex) {
       if (!p || !p.find) continue;
       let flags = p.flags || ''; if (!flags.includes('g')) flags += 'g';
@@ -390,7 +415,8 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { text, opts, consignes, dates } = body;
+  const { text, opts, consignes, dates, envoi } = body;
+  const verifierEnLigne = isLetter(body.docType) && body.verifierEnLigne !== false;
   const docType = body.docType || 'cp_fr';
   if (!text || typeof text !== 'string') {
     return res.status(400).json({ error: "Champ 'text' manquant ou invalide." });
@@ -399,17 +425,25 @@ export default async function handler(req, res) {
   const { system, user } = buildPrompt({ text, docType, opts: opts || {}, consignes });
 
   try {
-    const parsed = await callStructured({ apiKey, system, user, tool: ANALYZE_TOOL, maxTokens: MAX_TOKENS });
+    // Analyse principale et, pour les lettres, vérification en ligne des
+    // dénominations, menées en parallèle.
+    const [parsed, verif] = await Promise.all([
+      callStructured({ apiKey, system, user, tool: ANALYZE_TOOL, maxTokens: MAX_TOKENS }),
+      verifierEnLigne ? verifyEntities({ apiKey, text, docType }) : Promise.resolve(null),
+    ]);
 
     // Passes deterministes (dates puis regex), prioritaires sur Claude, puis fusion.
     const datePass = runDatePass({ text, docType, dates });
     const regexCorr = runRegexPass({ text, docType, consignes });
     const deterministic = datePass.corrections.concat(regexCorr);
-    const claudeCorr = harmonizeWithRules(parsed.corrections || [], docType, consignes);
+    const claudeCorr = harmonizeWithRules((parsed.corrections || []).concat(verif ? verif.corrections : []), docType, consignes);
     const corrections = mergeDedup(deterministic, claudeCorr);
 
-    // Verifications structurelles : decisions, et coherence des dates des communiques.
-    const warnings = ((docType === 'decision_ar') ? runDecisionChecks(text) : []).concat(datePass.warnings);
+    // Verifications structurelles : decisions, lettres, et coherence des dates des communiques.
+    const warnings = ((docType === 'decision_ar') ? runDecisionChecks(text) : [])
+      .concat(isLetter(docType) ? runLetterChecks({ text, docType, envoi }).warnings : [])
+      .concat(datePass.warnings)
+      .concat(verif ? verif.warnings : []);
 
     return res.status(200).json({
       corrections,
@@ -417,10 +451,11 @@ export default async function handler(req, res) {
       score: parsed.score,
       deterministic: deterministic.length,
       warnings,
+      verifications: verif ? verif.verifications : [],
     });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message });
   }
 }
 
-export { runRegexPass, leftAnchor, mergeDedup, catToType, buildPrompt, expandReplacement, applyRules, harmonizeWithRules };
+export { runRegexPass, leftAnchor, mergeDedup, catToType, buildPrompt, expandReplacement, applyRules, harmonizeWithRules, appliesTo };
