@@ -996,8 +996,12 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
+  // Suppression en deux clics (pas de window.confirm, bloqué dans certains navigateurs).
+  const [confirmDel, setConfirmDel] = useState(false);
   const del = () => {
-    if (!selected || !confirm("Supprimer cette consigne ?")) return;
+    if (!selected) return;
+    if (!confirmDel) { setConfirmDel(true); setTimeout(() => setConfirmDel(false), 4000); return; }
+    setConfirmDel(false);
     setConsignes(cs => cs.filter(c => c.id !== selected));
     setSelected(null); setIsNew(false);
   };
@@ -1065,10 +1069,14 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
                   const data = JSON.parse(text);
                   const fiches = data.consignes || data;
                   if (!Array.isArray(fiches)) throw new Error("Format invalide");
-                  if (!window.confirm(`Importer ${fiches.length} fiches depuis le fichier JSON ?\nElles remplaceront la liste actuelle (pensez ensuite à Enregistrer sur le serveur).`)) return;
+                  // Pas de window.confirm : certains navigateurs (volet intégré de
+                  // l'app Claude) bloquent les dialogues et annulent l'import.
+                  // L'import ne touche que la liste locale ; « Recharger » l'annule.
                   setConsignes(fiches);
+                  setSelected(null); setIsNew(false);
+                  setServerMsg(`✓ ${fiches.length} fiches importées dans la liste. Cliquez sur « Enregistrer sur le serveur » pour les conserver (« Recharger » annule l'import).`);
                 } catch(err) {
-                  alert("Erreur : " + err.message);
+                  setServerMsg("Erreur d'import : " + err.message);
                 }
               };
               input.click();
@@ -1138,7 +1146,7 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
                 {saved && <span style={{fontSize:10,color:C.green,fontWeight:500}}>✓ Enregistré (local)</span>}
                 <button onClick={save} style={{padding:"5px 13px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Appliquer</button>
                 {!isNew && <button onClick={dup} style={{padding:"5px 11px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:11,cursor:"pointer",color:C.text2}}>Dupliquer</button>}
-                {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red}}>Supprimer</button>}
+                {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red,fontWeight:confirmDel?600:400}}>{confirmDel ? "Confirmer la suppression" : "Supprimer"}</button>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}>
                 <FInput label="Code" field="code" ph="ex : F-01" form={form} setForm={setForm}/>
