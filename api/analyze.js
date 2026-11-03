@@ -6,7 +6,7 @@
 import { requireAppPassword } from '../lib/auth.js';
 import { callStructured } from '../lib/anthropic.js';
 import { runDatePass } from '../lib/dates.js';
-import { runLetterChecks } from '../lib/lettres.js';
+import { runLetterChecks, letterCorrections } from '../lib/lettres.js';
 import { verifyEntities } from '../lib/verify.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
@@ -429,14 +429,21 @@ export default async function handler(req, res) {
     // dénominations, menées en parallèle.
     const [parsed, verif] = await Promise.all([
       callStructured({ apiKey, system, user, tool: ANALYZE_TOOL, maxTokens: MAX_TOKENS }),
-      verifierEnLigne ? verifyEntities({ apiKey, text, docType }) : Promise.resolve(null),
+      verifierEnLigne ? verifyEntities({ apiKey, text, docType, envoi }) : Promise.resolve(null),
     ]);
 
     // Passes deterministes (dates puis regex), prioritaires sur Claude, puis fusion.
     const datePass = runDatePass({ text, docType, dates });
     const regexCorr = runRegexPass({ text, docType, consignes });
-    const deterministic = datePass.corrections.concat(regexCorr);
-    const claudeCorr = harmonizeWithRules((parsed.corrections || []).concat(verif ? verif.corrections : []), docType, consignes);
+    // Protocole des lettres (en-tête et clôture d'un ministre) ; une correction
+    // sourcée de la vérification en ligne portant sur l'en-tête y est fusionnée.
+    const verifCorr = verif ? verif.corrections : [];
+    const proto = isLetter(docType) ? letterCorrections({ text, docType, verifCorrections: verifCorr }) : { corrections: [], merged: new Set() };
+    const deterministic = proto.corrections.concat(datePass.corrections, regexCorr);
+    const exclusive = proto.corrections;
+    const touchesExclusive = c => exclusive.some(d => d.original.includes(c.original) || c.original.includes(d.original));
+    const claudeCorr = harmonizeWithRules((parsed.corrections || []).concat(verifCorr.filter((_, k) => !proto.merged.has(k))), docType, consignes)
+      .filter(c => !touchesExclusive(c));
     const corrections = mergeDedup(deterministic, claudeCorr);
 
     // Verifications structurelles : decisions, lettres, et coherence des dates des communiques.

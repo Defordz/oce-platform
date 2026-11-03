@@ -170,6 +170,11 @@ function normSpaces(s) { return s.replace(/[ \t\u00a0\u202f\u2009\f\u000b]+/g, "
 // Renvoie des "ilots" minimaux : seules les parties reellement modifiees, pour
 // que la revision ne barre pas la phrase entiere mais juste le mot touche.
 function diffIslands(a, b) {
+  // Ajout pur en tete ou en fin d'extrait (ex. une ligne « الفاضل المحترم » inseree
+  // avant la qualite d'un ministre) : une seule insertion, sans partager un
+  // prefixe commun qui couperait la marque de revision au milieu d'un mot.
+  if (a && b.length > a.length && b.endsWith(a) && /\n\s*$|\s$/.test(b.slice(0, b.length - a.length))) return [{ start: 0, del: "", ins: b.slice(0, b.length - a.length) }];
+  if (a && b.length > a.length && b.startsWith(a) && /^\s/.test(b.slice(a.length))) return [{ start: a.length, del: "", ins: b.slice(a.length) }];
   const isApos = c => c === "\u0027" || c === "\u2019" || c === "\u02bc" || c === "\uff07" || c === "\u2018";
   const eq = (x, y) => x === y || (isApos(x) && isApos(y));
   const n = a.length, m = b.length;
@@ -433,7 +438,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     let out = "";
     if (pre) out += `<w:r>${rpr}<w:t xml:space="preserve">${escXml(pre)}</w:t></w:r>`;
     if (rawDel) out += `<w:del w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rprWithDir(rpr, rawDel)}<w:delText xml:space="preserve">${escXml(rawDel)}</w:delText></w:r></w:del>`;
-    if (ins) out += `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rprWithDir(rpr, ins)}<w:t xml:space="preserve">${escXml(ins)}</w:t></w:r></w:ins>`;
+    // Un retour a la ligne dans le texte insere devient un saut de ligne Word (<w:br/>).
+    if (ins) out += `<w:ins w:id="${changeId[0]++}" w:author="OCE Correction" w:date="${date}"><w:r>${rprWithDir(rpr, ins)}<w:t xml:space="preserve">${escXml(ins).split("\n").join('</w:t><w:br/><w:t xml:space="preserve">')}</w:t></w:r></w:ins>`;
     if (post) out += `<w:r>${rprEnd}<w:t xml:space="preserve">${escXml(post)}</w:t></w:r>`;
 
     const firstStart = runs[sR].index;
@@ -585,6 +591,11 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       />
 
       {error && <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf0f0",border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12.5,color:C.red}}>{error}</div>}
+      {cfg.letters && !consignes.some(c => c && c.active !== false && ["lettre_ar","lettre_fr","lettres"].includes(c.doctype)) && (
+        <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:8,fontSize:12.5,color:C.text}}>
+          Aucune consigne de lettre n'est chargée : seuls le modèle et les contrôles de dates s'appliqueront. Importez le fichier de consignes des lettres (Fiches de consignes · Importer JSON · Enregistrer sur le serveur), puis rechargez la page.
+        </div>
+      )}
 
       <div style={{flex:1,overflowY:"auto",padding:"20px 30px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,alignItems:"start"}}>
         {/* Gauche */}
@@ -779,7 +790,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                       <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                         <span style={{fontSize:11.5,color:C.red,textDecoration:"line-through",fontStyle:"italic"}}>{c.original}</span>
                         <span style={{fontSize:11,color:C.text3}}>→</span>
-                        <span style={{fontSize:11.5,color:C.green,fontWeight:500}}>{c.suggested}</span>
+                        <span style={{fontSize:11.5,color:C.green,fontWeight:500,whiteSpace:"pre-line"}}>{c.suggested}</span>
                       </div>
                       <div style={{fontSize:10.5,color:C.text2,marginTop:4,lineHeight:1.5}}>{c.reason}</div>
                       <div style={{display:"flex",gap:5,marginTop:7}}>
@@ -807,7 +818,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                       </div>
                       <span style={{color:C.red,textDecoration:"line-through"}}>{c.original}</span>
                       <span style={{color:C.text3,margin:"0 5px"}}>→</span>
-                      <span style={{color:C.green,fontWeight:500}}>{c.suggested}</span>
+                      <span style={{color:C.green,fontWeight:500,whiteSpace:"pre-line"}}>{c.suggested}</span>
                     </div>
                   ))}
                 </Card>
