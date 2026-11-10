@@ -140,7 +140,8 @@ Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`
     : docType === 'decision_ar'
     ? `- Sont contrôlés automatiquement par ailleurs, et ne doivent faire l'objet d'AUCUNE correction : les dates (hégire et grégorien) et leur chronologie, le numéro de la décision et celui du dossier, les numéros et dates des dahirs et des décrets, les noms des membres et des signataires.
 - Ne modifie jamais une dénomination sociale, un nom propre, un chiffre ni une part de marché : signale seulement une différence entre deux passages du même document.
-- Le texte de la décision appartient à ses rédacteurs : ne reformule pas l'analyse concurrentielle, ne corrige que les erreurs.`
+- Le texte de la décision appartient à ses rédacteurs : ne reformule pas l'analyse concurrentielle, ne corrige que les erreurs. Les formules de référence des consignes servent à repérer un mot manquant ou une erreur : ne remplace jamais une tournure correcte par une variante équivalente.
+- Ne propose aucune correction dans les lignes de signature qui suivent le paragraphe « تم التداول » (les espaces multiples y servent à la mise en page).`
     : `- Les DATES de publication et de clôture des observations sont vérifiées et corrigées automatiquement par ailleurs : ne propose AUCUNE correction portant sur ces dates.`;
 
   // Partie FIXE (identique d'une analyse a l'autre pour un meme type) : mise en cache.
@@ -369,7 +370,14 @@ export default async function handler(req, res) {
     const touchesExclusive = c => exclusive.some(d => d.original.includes(c.original) || c.original.includes(d.original));
     const claudeCorr = harmonizeWithRules((parsed.corrections || []).concat(verifCorr.filter((_, k) => !proto.merged.has(k))), docType, consignes)
       .filter(c => !touchesExclusive(c)).map(aligne).filter(c => c.suggested.replace(/\s+/g, ' ').trim() !== c.original.replace(/\s+/g, ' ').trim());
-    const corrections = mergeDedup(deterministic, claudeCorr);
+    // Décisions : le bloc des signatures (après « تم التداول ») n'est jamais retouché.
+    let kept = claudeCorr;
+    if (docType === 'decision_ar') {
+      const iD = text.lastIndexOf('تم التداول');
+      const fin = iD >= 0 ? text.indexOf('\n', iD) : -1;
+      if (fin >= 0) kept = claudeCorr.filter(c => { const i = text.indexOf(c.original); return i < 0 || i < fin; });
+    }
+    const corrections = mergeDedup(deterministic, kept);
 
     // Verifications structurelles : decisions, lettres, et coherence des dates des communiques.
     const warnings = ((docType === 'decision_ar') ? runDecisionChecks(text) : [])

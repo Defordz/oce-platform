@@ -50,3 +50,22 @@ test('accord du rapporteur', () => assert.ok(kinds(sub('ومقررة الموض�
 test('dénomination différente à l’article deux', () => assert.ok(kinds(sub('المراقبة الحصرية لشركة "Beta Industries SARL".', 'المراقبة الحصرية لشركة "Beta Industry SARL".')).includes('parties')));
 test('millésime du numéro de décision', () => assert.ok(kinds(sub('100/ق/2026', '100/ق/2025')).includes('cohérence')));
 test('analyse concurrentielle absente', () => assert.ok(kinds(sub('أفقي أو عمودي أو تكتلي', 'محتمل')).includes('conformité')));
+
+// Le bloc des signatures n'est jamais retouché par le modèle ; le visa de
+// publication garde « مشروع التركيز ».
+test('signatures protégées et « مشروع التركيز » dans le référentiel', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  const { default: seed } = await import('../lib/consignesSeed.js');
+  assert.ok(seed.find(c => c.code === 'DEC-S-01').text.includes('حول مشروع التركيز الاقتصادي'));
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't', name: 'rapport_corrections', input: { synthese: 's', score: 8, corrections: [
+    { type: 'forme', code: '', original: 'سلمى الثانية                                 نائب الرئيس', suggested: 'سلمى الثانية نائب الرئيس', reason: 'x' },
+    { type: 'forme', code: '', original: 'وحيث إن السوق المعنية بهذه العملية هي سوق وطنية', suggested: 'وحيث إن السوق المعنية بهذه العملية سوق وطنية', reason: 'y' } ] } }] }) });
+  const { default: handler } = await import('../api/analyze.js');
+  const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
+  await handler({ method: 'POST', headers: {}, body: { text: REF, docType: 'decision_ar', opts: { forme: true }, consignes: [] } }, res);
+  globalThis.fetch = saved;
+  assert.equal(res.code, 200);
+  assert.equal(res.body.corrections.length, 1);
+  assert.ok(res.body.corrections[0].original.startsWith('وحيث'));
+});
