@@ -6,8 +6,9 @@
 import { requireAppPassword } from '../lib/auth.js';
 import { callStructured } from '../lib/anthropic.js';
 import { runDatePass } from '../lib/dates.js';
-import { runLetterChecks, letterCorrections } from '../lib/lettres.js';
+import { runLetterChecks, letterCorrections, letterAddressee, applyLetterFormulas } from '../lib/lettres.js';
 import { verifyEntities } from '../lib/verify.js';
+import { runDecisionChecks } from '../lib/decisions.js';
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MAX_TOKENS = 16000;
@@ -114,7 +115,15 @@ TERMINOLOGIE CONSACRÉE (termes et correspondances officiels à respecter) :
 ${termC}
 ` : '';
 
-  const structure = isLetter(docType) ? `REPÈRES DE STRUCTURE D'UNE LETTRE (pour le périmètre des consignes) :
+  const structureDecision = `REPÈRES DE STRUCTURE D'UNE DÉCISION (pour le périmètre des consignes) :
+- TITRE : « قرار مجلس المنافسة عدد …/ق/… », « الصادر بتاريخ … », puis l'objet « والمتعلق بـ… ».
+- OUVERTURE : « إن مجلس المنافسة؛ ».
+- VISAS : paragraphes « بناء على … ؛ » et « وبعد … ؛ » (textes, réunion, quorum, dossier de notification, désignation du rapporteur, notification à l'autorité gouvernementale, publication du communiqué, complétude du dossier, présentation du rapport).
+- CONSIDÉRANTS : paragraphes « وحيث … ؛ » (article 13, articles 11 et 12, qualification, seuils, parties, objectifs, marchés concernés, effets horizontaux, verticaux et congloméraux, conclusion).
+- DISPOSITIF : « قرر ما يلي: », « المادة الأولى », « المادة الثانية ».
+- DÉLIBÉRATION : « تم التداول بشأن هذا القرار … », puis les signatures.
+Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`;
+  const structure = docType === 'decision_ar' ? structureDecision : isLetter(docType) ? `REPÈRES DE STRUCTURE D'UNE LETTRE (pour le périmètre des consignes) :
 - DESTINATAIRE : qualité, entité et ville du destinataire, en tête de lettre (« الفاضل المحترم / السيد وزير … / - الرباط - » ; « À l'attention de Maître … »).
 - RUBRIQUES : « الموضوع » / « المرجع » / « المرفقات » (« Objet » / « Référence » / « P.J. »).
 - OUVERTURE : « سلام تام بوجود مولانا الإمام، » puis « وبعد، » (lettre arabe) ; l'appel (« Maître, », « Madame la Ministre, ») dans une lettre française.
@@ -128,6 +137,10 @@ Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`
   const datesRule = isLetter(docType)
     ? `- Les DATES de la lettre (jour de la semaine, jours fériés, délai de convocation, délai de réponse, chronologie des courriers et décisions cités) sont contrôlées automatiquement par ailleurs : ne propose AUCUNE correction portant sur une date.
 - Les dénominations officielles des entités et les qualités des destinataires sont vérifiées en ligne par ailleurs : ne corrige une dénomination que si l'erreur est manifeste dans le texte lui-même (grammaire, incohérence entre deux passages).`
+    : docType === 'decision_ar'
+    ? `- Sont contrôlés automatiquement par ailleurs, et ne doivent faire l'objet d'AUCUNE correction : les dates (hégire et grégorien) et leur chronologie, le numéro de la décision et celui du dossier, les numéros et dates des dahirs et des décrets, les noms des membres et des signataires.
+- Ne modifie jamais une dénomination sociale, un nom propre, un chiffre ni une part de marché : signale seulement une différence entre deux passages du même document.
+- Le texte de la décision appartient à ses rédacteurs : ne reformule pas l'analyse concurrentielle, ne corrige que les erreurs.`
     : `- Les DATES de publication et de clôture des observations sont vérifiées et corrigées automatiquement par ailleurs : ne propose AUCUNE correction portant sur ces dates.`;
 
   // Partie FIXE (identique d'une analyse a l'autre pour un meme type) : mise en cache.
@@ -307,102 +320,6 @@ function mergeDedup(regexCorr, claudeCorr) {
   return out;
 }
 
-// --- Vérifications structurelles déterministes propres aux décisions (decision_ar) ---
-// Deux contrôles, validés sur le corpus des décisions exemplaires (zéro fausse alerte) :
-//  1) la chronologie des étapes procédurales (clauses « وبعد ») doit être croissante ;
-//  2) les sections présentes doivent apparaître dans l'ordre canonique.
-// Ces contrôles SIGNALENT (warnings) sans corriger : une date hors séquence peut venir
-// d'une date erronée ou d'un paragraphe déplacé, c'est au relecteur de trancher.
-
-const GREG_MONTHS = { "يناير":1,"فبراير":2,"مارس":3,"أبريل":4,"ابريل":4,"ماي":5,"مايو":5,"يونيو":6,"يونيه":6,"يوليوز":7,"يوليو":7,"غشت":8,"شتنبر":9,"سبتمبر":9,"أكتوبر":10,"اكتوبر":10,"نونبر":11,"نوفمبر":11,"دجنبر":12,"ديسمبر":12 };
-const GREG_MONTHS_RE = Object.keys(GREG_MONTHS).sort((a, b) => b.length - a.length).join('|');
-
-function normArabicDigits(s) {
-  let out = '';
-  for (const ch of String(s)) {
-    const o = ch.codePointAt(0);
-    if (o >= 0x0660 && o <= 0x0669) out += String.fromCharCode(o - 0x0660 + 0x30);
-    else if (o >= 0x06F0 && o <= 0x06F9) out += String.fromCharCode(o - 0x06F0 + 0x30);
-    else out += ch;
-  }
-  return out;
-}
-function stripArabic(s) {
-  return String(s).replace(/[\u0640\u064B-\u0652\u0670]/g, '').replace(/[أإآ]/g, 'ا').replace(/\s+/g, ' ');
-}
-function firstGregDate(s) {
-  const m = normArabicDigits(s).match(new RegExp('(\\d{1,2})\\s+(' + GREG_MONTHS_RE + ')\\s+(\\d{4})'));
-  if (!m) return null;
-  return { key: (+m[3]) * 10000 + GREG_MONTHS[m[2]] * 100 + (+m[1]), label: m[1] + ' ' + m[2] + ' ' + m[3] };
-}
-function runDecisionChecks(text) {
-  const warnings = [];
-  const paras = String(text || '').split('\n').map(p => p.trim()).filter(Boolean);
-
-  // 1) Chronologie des clauses « وبعد » avant le dispositif.
-  const seq = [];
-  for (const p of paras) {
-    if (p.includes('قرر ما يلي')) break;
-    const pn = stripArabic(p);
-    if (pn.startsWith('وبعد') || pn.startsWith('بعد')) {
-      const d = firstGregDate(p);
-      if (d) seq.push(d);
-    }
-  }
-  for (let i = 1; i < seq.length; i++) {
-    if (seq[i].key < seq[i - 1].key) {
-      warnings.push({ kind: 'chronologie', message: `Ordre chronologique rompu dans les visas : la date « ${seq[i].label} » apparaît après « ${seq[i - 1].label} » alors qu'elle lui est antérieure. Vérifier l'ordre des paragraphes ou la date.` });
-    }
-  }
-
-  // 2) Ordre des sections présentes (on ne signale pas une section absente).
-  const MARKERS = [['ouverture', 'ان مجلس المنافسة'], ['visas', 'بناء على'], ['considérants', 'وحيث'], ['dispositif', 'قرر ما يلي'], ['délibération', 'تم التداول']];
-  const full = stripArabic(paras.join('\n'));
-  const present = [];
-  for (const [name, mk] of MARKERS) {
-    const i = full.indexOf(stripArabic(mk));
-    if (i >= 0) present.push({ name, i });
-  }
-  for (let i = 1; i < present.length; i++) {
-    if (present[i].i < present[i - 1].i) {
-      warnings.push({ kind: 'structure', message: `Ordre des sections inhabituel : « ${present[i].name} » apparaît avant « ${present[i - 1].name} ».` });
-    }
-  }
-
-  // 3) Cohérence du numéro de dossier de notification (visas vs article premier).
-  const nums = [];
-  const normedFull = normArabicDigits(paras.join('\n'));
-  const reNum = /عدد\s*(\d+)\s*\/\s*ع/g;
-  let mm;
-  while ((mm = reNum.exec(normedFull)) !== null) nums.push(mm[1]);
-  const distinct = [...new Set(nums)];
-  if (distinct.length > 1) {
-    warnings.push({ kind: 'cohérence', message: `Numéro de dossier de notification incohérent : ${distinct.join(' / ')}. Il doit être identique dans les visas et dans l'article premier.` });
-  }
-
-  // 4) Conformité de structure de fond : présence des éléments attendus.
-  // La dérogation (exception au titre de l'art. 14, 2e alinéa) suit une trame
-  // allégée, sans définition de marché ni analyse concurrentielle.
-  const hasM = (...alts) => alts.some(a => full.includes(stripArabic(a)));
-  const need = (label, ok) => { if (!ok) warnings.push({ kind: 'conformité', message: `Élément de fond attendu absent : ${label}.` }); };
-  const isDerog = hasM('الاستثناء') && hasM('الفقرة الثانية من المادة 14', 'الفقرة 2 من المادة 14');
-
-  need("qualification au sens de l'article 11", hasM('المادة 11'));
-  need("seuils de l'article 12", hasM('المادة 12'));
-  if (isDerog) {
-    need('autorisation à titre exceptionnel (art. 14, 2e alinéa)', hasM('بصفة استثنائية'));
-  } else {
-    need('définition du marché pertinent', hasM('السوق المعنية', 'الأسواق المعنية', 'تحديد السوق', 'تحديد الأسواق'));
-    need('analyse des effets horizontaux', hasM('أفقي', 'الأفقية'));
-    need('analyse des effets verticaux', hasM('عمودي', 'العمودية'));
-    need('analyse des effets congloméraux', hasM('تكتل', 'التكتلية'));
-  }
-  need('dispositif — article premier (يستوفي الشروط القانونية)', hasM('يستوفي الشروط القانونية'));
-  need('dispositif — article deux (يرخص مجلس المنافسة)', hasM('يرخص مجلس المنافسة'));
-
-  return warnings;
-}
-
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -422,7 +339,14 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Champ 'text' manquant ou invalide." });
   }
 
-  const { system, user } = buildPrompt({ text, docType, opts: opts || {}, consignes });
+  const built = buildPrompt({ text, docType, opts: opts || {}, consignes });
+  const system = built.system;
+  let user = built.user;
+  const destinataire = ['public', 'autre'].includes(body.destinataire) ? body.destinataire : undefined;
+  if (docType === 'lettre_ar') {
+    const cat = letterAddressee(text, destinataire).cat;
+    if (cat) user = `CATÉGORIE DU DESTINATAIRE (déterminée par ailleurs) : ${cat === 'public' ? "ministre ou dirigeant d'une administration ou d'un établissement public" : 'autre destinataire (société, association, avocat, personne physique)'}. Les formules d'en-tête, d'information et de demande propres à cette catégorie sont corrigées automatiquement : n'y touche pas.\n\n${user}`;
+  }
 
   try {
     // Analyse principale et, pour les lettres, vérification en ligne des
@@ -438,17 +362,19 @@ export default async function handler(req, res) {
     // Protocole des lettres (en-tête et clôture d'un ministre) ; une correction
     // sourcée de la vérification en ligne portant sur l'en-tête y est fusionnée.
     const verifCorr = verif ? verif.corrections : [];
-    const proto = isLetter(docType) ? letterCorrections({ text, docType, verifCorrections: verifCorr }) : { corrections: [], merged: new Set() };
+    const proto = isLetter(docType) ? letterCorrections({ text, docType, verifCorrections: verifCorr, destinataire }) : { corrections: [], merged: new Set(), warnings: [] };
     const deterministic = proto.corrections.concat(datePass.corrections, regexCorr);
-    const exclusive = proto.corrections;
+    const exclusive = proto.corrections.filter(c => c.exclusive);
+    const aligne = c => { const sug = applyLetterFormulas(c.suggested, proto.categorie); return sug === c.suggested ? c : { ...c, suggested: sug }; };
     const touchesExclusive = c => exclusive.some(d => d.original.includes(c.original) || c.original.includes(d.original));
     const claudeCorr = harmonizeWithRules((parsed.corrections || []).concat(verifCorr.filter((_, k) => !proto.merged.has(k))), docType, consignes)
-      .filter(c => !touchesExclusive(c));
+      .filter(c => !touchesExclusive(c)).map(aligne).filter(c => c.suggested.replace(/\s+/g, ' ').trim() !== c.original.replace(/\s+/g, ' ').trim());
     const corrections = mergeDedup(deterministic, claudeCorr);
 
     // Verifications structurelles : decisions, lettres, et coherence des dates des communiques.
     const warnings = ((docType === 'decision_ar') ? runDecisionChecks(text) : [])
       .concat(isLetter(docType) ? runLetterChecks({ text, docType, envoi }).warnings : [])
+      .concat(proto.warnings || [])
       .concat(datePass.warnings)
       .concat(verif ? verif.warnings : []);
 
@@ -459,10 +385,12 @@ export default async function handler(req, res) {
       deterministic: deterministic.length,
       warnings,
       verifications: verif ? verif.verifications : [],
+      categorie: proto.categorie || null,
     });
   } catch (e) {
     return res.status(e.status || 500).json({ error: e.message });
   }
 }
 
+export { runDecisionChecks };
 export { runRegexPass, leftAnchor, mergeDedup, catToType, buildPrompt, expandReplacement, applyRules, harmonizeWithRules, appliesTo };

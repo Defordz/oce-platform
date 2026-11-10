@@ -113,7 +113,6 @@ function Sidebar({page, setPage}) {
       <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Administrateur</div>
       {item("dashboard","📊","Tableau de bord")}
       {item("consignes","📋","Fiches de consignes")}
-      {item("utilisateurs","👥","Utilisateurs")}
       <div style={{marginTop:"auto",padding:14,borderTop:"1px solid rgba(255,255,255,.08)"}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
           <div style={{width:28,height:28,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,color:"#fff"}}>RA</div>
@@ -288,6 +287,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [envoi, setEnvoi] = useState(() => nextWorkingDay());
   const [verifierEnLigne, setVerifierEnLigne] = useState(true);
   const [verifications, setVerifications] = useState([]);
+  const [destinataire, setDestinataire] = useState("auto");
+  const [categorie, setCategorie] = useState(null);
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -342,7 +343,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const analyze = async () => {
     const text = fileContent || (cfg.allowDemo ? DEMO_TEXT : "");
     if (!text) { setError("Veuillez d'abord charger un document (.docx)."); return; }
-    setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]); setWarnings([]); setVerifications([]);
+    setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]); setWarnings([]); setVerifications([]); setCategorie(null);
 
     // Animate steps
     for (let i = 0; i < steps.length; i++) {
@@ -356,7 +357,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ text, docType, opts, consignes, dates: (hasDates && dateOn && pubDate) ? { publication: pubDate, deadline } : null,
-          ...(cfg.letters ? { envoi, verifierEnLigne } : {}) }),
+          ...(cfg.letters ? { envoi, verifierEnLigne, destinataire } : {}) }),
       });
 
       if (!res.ok) {
@@ -370,6 +371,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       setSynthese(parsed.synthese || "");
       setWarnings(parsed.warnings || []);
       setVerifications(parsed.verifications || []);
+      setCategorie(parsed.categorie || null);
       setScore(parsed.score);
       setHistory(h => [{id:Date.now(),file:fileName||"Document démo",type:docType,corrections:(parsed.corrections||[]).length,score:parsed.score,date:new Date().toLocaleDateString("fr-FR"),data:parsed.corrections,synthese:parsed.synthese},...h]);
     } catch (err) {
@@ -554,8 +556,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
-    if (!accepted.length) { alert("Aucune correction à télécharger."); return; }
-    if (!fileBytes) { alert("Veuillez uploader un fichier .docx pour utiliser cette fonctionnalité."); return; }
+    if (!accepted.length) { setError("Aucune correction à télécharger."); return; }
+    if (!fileBytes) { setError("Chargez un fichier .docx pour utiliser cette fonctionnalité."); return; }
 
     try {
       setNotApplied([]);
@@ -587,7 +589,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       const manques = accepted.filter((_, i) => !appliedFlags[i]);
       setNotApplied(manques);
     } catch(e) {
-      alert("Erreur lors de la génération du fichier : " + e.message);
+      setError("Erreur lors de la génération du fichier : " + e.message);
     }
   };
 
@@ -691,6 +693,19 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 <div style={{fontSize:10,color:C.text3,marginTop:1}}>Intitulés des ministères et organismes, qualité des destinataires · 3 recherches au plus, sources citées</div>
               </div>
             </div>
+            {docType === "lettre_ar" && (
+              <div style={{marginTop:10}}>
+                <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Destinataire (formules de politesse)</div>
+                <select value={destinataire} onChange={e => setDestinataire(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:12,color:C.text,background:"#fff"}}>
+                  <option value="auto">Détection automatique</option>
+                  <option value="public">Ministre ou dirigeant d'établissement public</option>
+                  <option value="autre">Autre (société, association, avocat…)</option>
+                </select>
+                <div style={{fontSize:10,color:C.text3,marginTop:3,lineHeight:1.5}}>
+                  {categorie ? `Catégorie retenue : ${categorie === "public" ? "ministre ou dirigeant d'établissement public" : "autre destinataire"}.` : phase === "done" && destinataire === "auto" ? "Catégorie non reconnue : choisissez-la pour appliquer les formules." : "Public : « الفاضل المحترم », « أحيط سيادتكم علما », « أطلب منكم التفضل مشكورين ». Autre : « أحيطكم علما », « أطلب من سيادتكم »."}
+                </div>
+              </div>
+            )}
           </Card>
           )}
 
@@ -962,6 +977,117 @@ function FSel({label, field, opts, form, setForm}) {
 
 const CODE_PREFIX = {FORME:"F",FOND:"D",TERMINOLOGIE:"T",BILINGUE:"B"};
 
+// ── ASSISTANT DE CONSIGNES ──
+// L'utilisateur décrit la correction voulue ; le serveur renvoie une fiche
+// complète (et, pour une règle automatique, le résultat de ses essais).
+function AssistantConsigne({consignes, onAdd, onClose}) {
+  const [msgs, setMsgs] = useState([{role:"assistant", content:"Décrivez la correction que vous voulez voir appliquée, avec vos mots. Si possible, donnez un exemple : le texte fautif, puis le texte corrigé, et le type de document concerné (communiqué, décision, lettre).", intro:true}]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [essai, setEssai] = useState("");
+  const [essaiRes, setEssaiRes] = useState(null);
+  const endRef = useRef(null);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({block:"end"}); }, [msgs, busy]);
+  const last = [...msgs].reverse().find(m => m.consigne);
+  const light = consignes.map(c => ({code:c.code, doctype:c.doctype, mode:c.mode, label:c.label, active:c.active}));
+
+  const send = async () => {
+    const text = input.trim(); if (!text || busy) return;
+    const next = [...msgs, {role:"user", content:text}];
+    setMsgs(next); setInput(""); setBusy(true); setErr(""); setEssaiRes(null);
+    try {
+      const payload = next.filter(m => !m.intro).map(m => ({role:m.role, content: m.consigne ? `${m.content}\n[Proposition faite : ${JSON.stringify({doctype:m.consigne.doctype, category:m.consigne.category, mode:m.consigne.mode, label:m.consigne.label, text:m.consigne.text, examples:m.consigne.examples, regex:m.consigne.regex})}]` : m.content}));
+      const r = await fetch("/api/assistant-consigne", {method:"POST", headers:{"Content-Type":"application/json", ...authHeaders()}, body: JSON.stringify({messages: payload, consignes: light})});
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+      setMsgs(m => [...m, {role:"assistant", content:d.message || "", consigne:d.consigne || null, essais:d.essais || [], doublon:d.doublon || ""}]);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const tester = async () => {
+    if (!essai.trim() || !last) return;
+    setEssaiRes(null);
+    try {
+      const r = await fetch("/api/assistant-consigne", {method:"POST", headers:{"Content-Type":"application/json", ...authHeaders()}, body: JSON.stringify({essai, consigne:last.consigne})});
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ("HTTP " + r.status));
+      setEssaiRes(d.corrections || []);
+    } catch (e) { setErr(e.message); }
+  };
+  const ar = t => /[؀-ۿ]/.test(t || "");
+  const bubble = (m, i) => (
+    <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"88%",background:m.role==="user"?C.navy:"#fff",color:m.role==="user"?"#fff":C.text,border:m.role==="user"?"none":`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:12.5,lineHeight:1.55,whiteSpace:"pre-wrap"}}>
+      <div dir="auto">{m.content}</div>
+      {m.doublon && <div style={{marginTop:6,fontSize:11,color:C.amber}}>Consigne existante concernée : {m.doublon}</div>}
+      {m.consigne && (
+        <div style={{marginTop:9,border:`1px solid ${C.border2}`,borderRadius:8,padding:"10px 12px",background:C.cream}}>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
+            <span style={{fontWeight:600,color:C.navy,fontSize:12.5}}>{m.consigne.code} · {m.consigne.label}</span>
+            <span style={{fontSize:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"1px 7px",color:C.text2}}>{TYPE_LABELS[m.consigne.doctype] || m.consigne.doctype}</span>
+            <span style={{fontSize:10,background:m.consigne.mode==="regex"?C.greenLight:C.amberLight,color:m.consigne.mode==="regex"?C.green:C.amber,borderRadius:10,padding:"1px 7px"}}>{m.consigne.mode==="regex" ? "Correction automatique" : "Appliquée à la lecture par le correcteur"}</span>
+          </div>
+          <div dir="auto" style={{fontSize:12,color:C.text,lineHeight:1.55}}>{m.consigne.text}</div>
+          {m.consigne.examples && <div dir="auto" style={{fontSize:11.5,color:C.text2,marginTop:6,whiteSpace:"pre-line"}}>{m.consigne.examples}</div>}
+          {m.essais && m.essais.length > 0 && (
+            <div style={{marginTop:8}}>
+              <div style={{fontSize:10.5,fontWeight:600,color:C.text2,marginBottom:3}}>Essais exécutés</div>
+              {m.essais.map((t, k) => (
+                <div key={k} dir="auto" style={{fontSize:11.5,color:t.ok?C.green:C.red,lineHeight:1.5}}>
+                  {t.ok ? "✓" : "✗"} {t.avant}{t.avant === t.attendu ? "  (inchangé, comme attendu)" : `  →  ${t.obtenu}`}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(15,38,80,.35)",zIndex:50,display:"flex",justifyContent:"flex-end"}}>
+      <div style={{width:"min(560px,100%)",height:"100%",background:C.cream,display:"flex",flexDirection:"column",boxShadow:"-6px 0 24px rgba(0,0,0,.15)"}}>
+        <div style={{padding:"14px 18px",background:"#fff",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:600,color:C.navy}}>Assistant de consignes</div>
+            <div style={{fontSize:11,color:C.text3}}>Décrivez la correction ; l'assistant rédige la consigne et la vérifie.</div>
+          </div>
+          <button onClick={onClose} style={{border:`1px solid ${C.border2}`,background:"#fff",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",color:C.text2}}>Fermer</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"14px 18px",display:"flex",flexDirection:"column",gap:9}}>
+          {msgs.map(bubble)}
+          {busy && <div style={{alignSelf:"flex-start",fontSize:12,color:C.text3,display:"flex",gap:7,alignItems:"center"}}><Spinner/> Rédaction et vérification de la consigne…</div>}
+          {err && <div style={{fontSize:12,color:C.red,background:C.redLight,border:"1px solid #f5b7b7",borderRadius:8,padding:"7px 10px"}}>Erreur : {err}</div>}
+          <div ref={endRef}/>
+        </div>
+        {last && !busy && last === msgs[msgs.length-1] && (
+          <div style={{padding:"10px 18px",background:"#fff",borderTop:`1px solid ${C.border}`}}>
+            {last.consigne.mode === "regex" && (
+              <div style={{marginBottom:8}}>
+                <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:3}}>Essayer sur un texte (facultatif) : collez un passage d'un vrai document</div>
+                <div style={{display:"flex",gap:6}}>
+                  <textarea dir="auto" value={essai} onChange={e => setEssai(e.target.value)} rows={2} style={{flex:1,padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:12,resize:"vertical"}}/>
+                  <button onClick={tester} style={{padding:"0 12px",border:`1px solid ${C.border2}`,background:"#fff",borderRadius:6,fontSize:12,cursor:"pointer",color:C.text2}}>Essayer</button>
+                </div>
+                {essaiRes && <div style={{marginTop:5,fontSize:11.5,color:C.text2,maxHeight:90,overflowY:"auto"}}>
+                  {essaiRes.length === 0 ? "La consigne ne change rien dans ce texte." : essaiRes.map((c, k) => <div key={k} dir="auto">« {c.original} » → « {c.suggested} »</div>)}
+                </div>}
+              </div>
+            )}
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button onClick={() => onAdd(last.consigne)} style={{padding:"8px 14px",border:"none",borderRadius:7,background:C.green,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>✓ Ajouter cette consigne</button>
+              <span style={{fontSize:11,color:C.text3}}>ou écrivez ci-dessous ce qu'il faut changer.</span>
+            </div>
+          </div>
+        )}
+        <div style={{padding:"10px 18px 14px",background:"#fff",borderTop:`1px solid ${C.border}`,display:"flex",gap:8}}>
+          <textarea dir="auto" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} rows={3} placeholder={"Ex. : dans les lettres en arabe, écrire « بواسطة البريد الإلكتروني » et non « عبر الإيميل »"} style={{flex:1,padding:"8px 10px",border:`1px solid ${C.border2}`,borderRadius:8,fontSize:12.5,resize:"none",color:C.text}}/>
+          <button onClick={send} disabled={busy || !input.trim()} style={{padding:"0 16px",border:"none",borderRadius:8,background:busy||!input.trim()?"#9ca3af":C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:busy||!input.trim()?"not-allowed":"pointer"}}>Envoyer</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── CONSIGNES ──
 function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) {
   const [selected, setSelected] = useState(null);
@@ -973,6 +1099,21 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
   const [adminToken, setAdminToken] = useState("");
   const [serverMsg, setServerMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [assistant, setAssistant] = useState(false);
+  // Consigne proposée par l'assistant : ajoutée à la liste, puis enregistrée sur
+  // le serveur si le mot de passe administrateur est déjà saisi.
+  const addFromAssistant = async fiche => {
+    let code = fiche.code;
+    if (consignes.some(c => c.code === code)) { const m = /^(.*-)(\d+)$/.exec(code); let n = m ? +m[2] : 1; do { n++; code = (m ? m[1] : code + "-") + String(n).padStart(2,"0"); } while (consignes.some(c => c.code === code)); }
+    const nc = {...fiche, code, id: code};
+    const liste = [...consignes, nc];
+    setConsignes(liste); setSelected(nc.id); setForm({...nc}); setIsNew(false); setAssistant(false);
+    if (!adminToken) { setServerMsg(`✓ Consigne ${code} ajoutée à la liste. Saisissez le mot de passe administrateur puis cliquez sur « Enregistrer sur le serveur » pour la conserver.`); return; }
+    setBusy(true);
+    try { const r = await onSaveServer(liste, adminToken); setServerMsg(`✓ Consigne ${code} ajoutée et enregistrée sur le serveur (${r.count} consignes).`); }
+    catch (e) { setServerMsg("Erreur : consigne ajoutée à la liste mais non enregistrée (" + e.message + ")."); }
+    setBusy(false);
+  };
 
   const filtered = consignes.filter(c => (!filterType||c.doctype===filterType) && (!filterCat||c.category===filterCat));
   const selC = selected ? consignes.find(c => c.id===selected) : null;
@@ -1102,10 +1243,12 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
             }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
               💾 Exporter JSON
             </button>
-            <button onClick={newC} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>+ Nouvelle consigne</button>
+            <button onClick={() => setAssistant(true)} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.gold,color:"#fff",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>✨ Créer avec l'assistant</button>
+            <button onClick={newC} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>+ Saisie manuelle</button>
           </div>
         }
       />
+      {assistant && <AssistantConsigne consignes={consignes} onAdd={addFromAssistant} onClose={() => setAssistant(false)}/>}
       {serverMsg && <div style={{margin:"10px 30px 0",padding:"8px 14px",background:serverMsg.startsWith("Erreur")?C.redLight:C.greenLight,border:`1px solid ${serverMsg.startsWith("Erreur")?"#f5b7b7":"#a7d7b7"}`,borderRadius:8,fontSize:12.5,color:serverMsg.startsWith("Erreur")?C.red:C.green}}>{serverMsg}</div>}
       <div style={{flex:1,padding:"18px 30px",overflow:"hidden",display:"grid",gridTemplateColumns:"255px 1fr",gap:14}}>
         {/* Liste */}
@@ -1188,55 +1331,6 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
 }
 
 // ── UTILISATEURS ──
-function UtilisateursPage() {
-  const [users, setUsers] = useState([
-    {id:1,name:"Ahmed Rachidi",role:"Rapporteur",docs:12,lastLogin:"23/04/2026",active:true},
-    {id:2,name:"Fatima Zahra Idrissi",role:"Rapporteur",docs:8,lastLogin:"22/04/2026",active:true},
-    {id:3,name:"Karim Benali",role:"Administrateur",docs:0,lastLogin:"20/04/2026",active:true},
-  ]);
-
-  const toggle = id => setUsers(us => us.map(u => u.id===id ? {...u,active:!u.active} : u));
-  const add = () => {
-    const name = prompt("Nom complet du nouvel utilisateur :");
-    if (name) setUsers(us => [...us, {id:Date.now(),name,role:"Rapporteur",docs:0,lastLogin:"—",active:true}]);
-  };
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <PageHeader
-        title="Utilisateurs"
-        sub="Rapporteurs et administrateurs de la plateforme"
-        right={<button onClick={add} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>+ Ajouter</button>}
-      />
-      <div style={{padding:"22px 30px",flex:1,overflowY:"auto"}}>
-        <Card>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}>
-            <thead>
-              <tr style={{borderBottom:`1px solid ${C.cream3}`}}>
-                {["Nom","Rôle","Documents","Dernière connexion","Statut","Actions"].map(h => <th key={h} style={{padding:"8px 13px",textAlign:"left",fontSize:9.5,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".05em"}}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u => (
-                <tr key={u.id} style={{borderBottom:`1px solid ${C.cream2}`}}>
-                  <td style={{padding:"9px 13px",fontWeight:500}}>{u.name}</td>
-                  <td style={{padding:"9px 13px"}}><span style={{background:u.role==="Administrateur"?C.amberLight:"#dbeafe",color:u.role==="Administrateur"?C.amber:"#1e40af",padding:"2px 7px",borderRadius:20,fontSize:9.5,fontWeight:600}}>{u.role}</span></td>
-                  <td style={{padding:"9px 13px"}}>{u.docs}</td>
-                  <td style={{padding:"9px 13px",color:C.text3}}>{u.lastLogin}</td>
-                  <td style={{padding:"9px 13px"}}><span style={{background:u.active?C.greenLight:C.cream2,color:u.active?C.green:C.text3,padding:"2px 7px",borderRadius:20,fontSize:9.5,fontWeight:600}}>{u.active?"Actif":"Inactif"}</span></td>
-                  <td style={{padding:"9px 13px"}}>
-                    <button onClick={() => toggle(u.id)} style={{padding:"3px 9px",border:`1px solid ${C.border2}`,borderRadius:5,background:"#fff",fontSize:10.5,cursor:"pointer",color:C.text2}}>{u.active?"Désactiver":"Activer"}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 // ── ROOT ──
 function ComparaisonPage({consignes}) {
   const [frName, setFrName] = useState("");
@@ -1562,7 +1656,6 @@ export default function App() {
           {page==="historique"    && <HistoriquePage history={history}/>}
           {page==="dashboard"     && <DashboardPage history={history}/>}
           {page==="consignes"     && <ConsignesPage consignes={consignes} setConsignes={setConsignes} onSaveServer={saveConsignesToServer} onReloadServer={loadConsignes}/>}
-          {page==="utilisateurs"  && <UtilisateursPage/>}
         </main>
       </div>
     </>
