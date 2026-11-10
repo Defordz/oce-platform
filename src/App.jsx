@@ -72,6 +72,10 @@ const TYPE_BORDER = {forme:"#3b82f6",fond:C.gold,terminologie:C.green,bilingue:C
 // independamment de l'extension qui peut mentir :
 //   - .docx (et tout fichier Office moderne) = archive ZIP : 50 4B ("PK")
 //   - .doc ancien = fichier composite OLE2 : D0 CF 11 E0 A1 B1 1A E1
+// Le texte des balises <w:t> est du XML : « & » y est écrit « &amp; ». On le
+// décode à la lecture (extraction et moteur) et on le recode à l'écriture.
+const decodeXml = s => String(s).replace(/&(?:#x([0-9a-fA-F]+)|#(\d+)|lt|gt|quot|apos|amp);/g, (m, h, d) => h ? String.fromCodePoint(parseInt(h, 16)) : d ? String.fromCodePoint(+d) : ({"&lt;":"<","&gt;":">","&quot;":'"',"&apos;":"'","&amp;":"&"})[m]);
+
 function sniffFileKind(arrayBuffer) {
   const b = new Uint8Array(arrayBuffer.slice(0, 8));
   if (b[0] === 0x50 && b[1] === 0x4b) return "zip";
@@ -320,7 +324,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
         // (mots de deux lignes voisines colles) et des corrections a cheval sur
         // deux paragraphes, impossibles a reappliquer.
         const paras = [...docXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map(p => {
-          const t = [...p[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m => m[1]).join("");
+          const t = decodeXml([...p[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m => m[1]).join(""));
           return t.replace(/[ \t\u00a0\u202f\u2009]+/g, " ").trim();
         }).filter(t => t.length);
         const extracted = paras.join("\n");
@@ -424,7 +428,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     if (!runs.length) return paraXml;
     const texts = runs.map(m => {
       const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-      return t ? t[1] : "";
+      return t ? decodeXml(t[1]) : "";
     });
     let cum = 0, sR = null, eR = null;
     for (let i = 0; i < texts.length; i++) {
@@ -473,7 +477,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     if (!runs0.length) return paraXml;
     const texts0 = runs0.map(m => {
       const t = m[0].match(/<w:t[^>]*>([^<]*)<\/w:t>/);
-      return t ? t[1] : "";
+      return t ? decodeXml(t[1]) : "";
     });
     const combined = texts0.join("");
     const { norm, map } = buildNormMap(combined);
@@ -1349,7 +1353,7 @@ function ComparaisonPage({consignes}) {
     const zip = await JSZip.loadAsync(ab);
     const docXml = await zip.file("word/document.xml").async("string");
     const paras = [...docXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)].map(p => {
-      const t = [...p[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m => m[1]).join("");
+      const t = decodeXml([...p[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map(m => m[1]).join(""));
       return t.replace(/[ \t\u00a0\u202f\u2009]+/g, " ").trim();
     }).filter(t => t.length);
     return paras.join("\n");

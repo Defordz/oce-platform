@@ -69,3 +69,15 @@ test('signatures protégées et « مشروع التركيز » dans le référe
   assert.equal(res.body.corrections.length, 1);
   assert.ok(res.body.corrections[0].original.startsWith('وحيث'));
 });
+
+// Variantes de rédaction admises (essai Mutandis / Enosis) : aucune fausse alerte.
+test('« 16 من شعبان », quantième à deux chiffres, deux rapporteures', () => {
+  let t = sub('16 شعبان 1436 الموافق لـ 4 يونيو 2015', '16 من شعبان 1436 الموافق لـ 04 يونيو 2015');
+  t = t.replace('القاضي بتعيين السيدة فلانة الفلانية مقررة في الموضوع', 'القاضيين بتعيين كل من السيدة فلانة الفلانية والسيدة علانة العلانية كمقررتين في الموضوع').replace('ومقررة الموضوع', 'ومقررتي الموضوع');
+  assert.deepEqual(runDecisionChecks(t), []);
+});
+test('millésime grégorien à la place de l’année hégirienne', () => {
+  const w = runDecisionChecks(sub('23 ذو القعدة 1447 الموافق لـ 11 ماي 2026', '23 ذو القعدة 2026 الموافق لـ 11 ماي 2026'));
+  assert.equal(w.length, 1);
+  assert.ok(w[0].message.startsWith('Année hégirienne erronée'));
+});
