@@ -48,3 +48,16 @@ test('réalignement des extraits arabes', async () => {
   assert.ok(r.startsWith('ستُورِّدُها') && r.endsWith("المغربية''"));
   assert.equal(realignOriginal(doc, 'absent'), 'absent');
 });
+
+test('emplacement fait de lettres : « xx mm 2026 » (arabe), « jj/mm/aaaa » (français)', () => {
+  const ar = 'وينتهي هذا الأجل يوم xx mm 2026. \nحرر في الرباط بتاريخ xx  mm  2026.';
+  const r = runDatePass({ text: ar, docType: 'cp_ar', dates: { publication: '2026-11-19', deadline: '2026-11-30' } });
+  assert.deepEqual(r.corrections.map(c => c.suggested), ['حرر في الرباط بتاريخ 19 نونبر 2026', 'ينتهي هذا الأجل يوم 30 نونبر 2026']);
+  assert.equal(r.warnings.length, 0);
+  const fr = '10 jours à partir de la date de publication du présent communiqué, soit le jj/mm/aaaa.\nFait à Rabat, le xx mm 2026';
+  const f = runDatePass({ text: fr, docType: 'cp_fr', dates: { publication: '2026-11-19', deadline: '2026-11-30' } });
+  assert.deepEqual(f.corrections.map(c => c.suggested), ['Fait à Rabat, le 19 novembre 2026', 'soit le 30 novembre 2026.']);
+  // Un vrai texte après le repère n'est jamais pris pour un emplacement.
+  const g = runDatePass({ text: 'Fait à Rabat, le mardi', docType: 'cp_fr', dates: { publication: '2026-11-19' } });
+  assert.equal(g.corrections.length, 0);
+});

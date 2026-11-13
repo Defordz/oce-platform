@@ -69,48 +69,10 @@ const ANALYZE_TOOL = {
   },
 };
 
-// Communiqués : grille de relecture remplie AVANT les corrections. Elle oblige
-// le modèle à passer chaque société et chaque fait du résumé en revue, au lieu
-// d'en retenir une partie qui varie d'une analyse à l'autre. Un seul appel :
-// quelques centaines de mots de plus en sortie, coût quasi inchangé.
-const GRILLE = {
-  controle_societes: {
-    type: 'array',
-    description: "Une ligne par société que le RÉSUMÉ NON CONFIDENTIEL DÉCRIT (siège, droit applicable ou immatriculation indiqués), à sa première mention. Une société seulement citée en passant (actionnaire, filiale sans description) n'y figure pas.",
-    items: {
-      type: 'object',
-      properties: {
-        societe: { type: 'string' },
-        forme_juridique: { type: 'string', enum: ['indiquee', 'manquante', 'sans_objet'], description: "« manquante » seulement si le nom porte une forme sans ambiguïté (SA, S.A., SAS, SARL, AG, GmbH, S.p.A., S.A.U., SE) et que la description ne l'écrit pas. « Co., Ltd », « Ltd », « Inc. », « LLC » ou aucun sigle : « sans_objet »." },
-        droit_applicable: { type: 'string', enum: ['conforme', 'a_corriger', 'absent', 'sans_objet'], description: "Formule consacrée : « de droit [pays] » / « خاضعة للقانون [البلد] »." },
-        immatriculation: { type: 'string', enum: ['conforme', 'a_corriger', 'absente', 'sans_objet'], description: "Formule consacrée : « immatriculée au Registre du Commerce de [ville] sous le numéro … » / « مسجلة في السجل التجاري ب… تحت رقم … ». « a_corriger » seulement pour une formule fautive ; une précision supplémentaire (tribunal tenant le registre, « Registre du commerce et des sociétés » d'un pays étranger) est conforme et ne se retire jamais." },
-        denomination_constante: { type: 'boolean', description: 'La dénomination est écrite exactement de la même façon partout dans le document (majuscules, ponctuation, Ltd./S.A.).' },
-      },
-      required: ['societe', 'forme_juridique', 'droit_applicable', 'immatriculation', 'denomination_constante'],
-    },
-  },
-  controle_sens: {
-    type: 'array',
-    description: "Chaque fait du communiqué, vérifié contre le titre, le tableau et les autres paragraphes : qui notifie, nature de l'opération, nombre et nom des entités, qui contrôle quoi, pourcentages, qui fournit quoi à qui, marchés concernés.",
-    items: {
-      type: 'object',
-      properties: {
-        fait: { type: 'string', description: 'Le fait vérifié, en une phrase courte.' },
-        verdict: { type: 'string', enum: ['coherent', 'incoherent'] },
-      },
-      required: ['fait', 'verdict'],
-    },
-  },
-};
-const ANALYZE_TOOL_CP = {
-  ...ANALYZE_TOOL,
-  input_schema: {
-    ...ANALYZE_TOOL.input_schema,
-    properties: { ...GRILLE, ...ANALYZE_TOOL.input_schema.properties },
-    required: ['controle_societes', 'controle_sens', ...ANALYZE_TOOL.input_schema.required],
-  },
-};
-const isCommunique = dt => dt === 'cp_fr' || dt === 'cp_ar';
+// Communiqués : la grille de relecture du 13/11 (sociétés et faits passés en revue
+// avant les corrections) est retirée le même jour, à la demande de l'utilisateur :
+// les corrections étaient moins nombreuses qu'avant. Retour au fonctionnement du
+// 03/11 (outil et consignes inchangés), garde-fous déterministes conservés.
 
 function setCors(res) {
   // CORS restreint au domaine de production (ALLOWED_ORIGIN), jamais '*'.
@@ -142,9 +104,7 @@ function buildPrompt({ text, docType, opts, consignes }) {
   const cat = k => String(k || '').toUpperCase();
   const formeC = applicable.filter(c => cat(c.category) === 'FORME').map(fmt).join('\n\n');
   const fondC = applicable.filter(c => cat(c.category) === 'FOND').map(fmt).join('\n\n');
-  // Les consignes BILINGUE (cohérence FR/AR) relèvent du module de comparaison :
-  // elles ne peuvent pas s'appliquer à un document seul.
-  const termC = applicable.filter(c => cat(c.category) === 'TERMINOLOGIE').map(fmt).join('\n\n');
+  const termC = applicable.filter(c => cat(c.category) === 'TERMINOLOGIE' || cat(c.category) === 'BILINGUE').map(fmt).join('\n\n');
 
   const formeInstructions = opts && opts.forme ? `
 CORRECTIONS DE FORME (orthographe, frappe, typographie, accords, majuscules) :
@@ -229,9 +189,7 @@ ${docType === 'rapport' ? '- Aucune correction automatique n\'est faite sur ce d
 ${datesRule}
 - "code" est EXACTEMENT l'un des codes de consignes listés plus haut (ex: F-03, D-04, T-01), ou une chaîne vide. N'invente JAMAIS un code.
 - N'invente pas d'erreur : en cas de doute, ne corrige pas.
-- Renseigne ton résultat avec l'outil rapport_corrections : synthèse en 2 ou 3 phrases et note de 1 à 10.${isCommunique(docType) ? `
-- MÉTHODE (communiqués) : remplis d'abord la grille. « controle_societes » : une ligne pour CHAQUE société que le résumé décrit. « controle_sens » : chaque fait du communiqué, comparé au titre, au tableau et aux autres paragraphes ; lis chaque phrase pour ce qu'elle dit réellement (qui fournit quoi à qui, qui contrôle qui) et signale un contresens. Puis, dans « corrections », une correction pour CHAQUE case « manquante » ou « a_corriger », pour chaque dénomination non constante (corrige TOUTES ses occurrences) et pour chaque fait « incoherent ».
-- Une information ABSENTE (droit applicable, immatriculation, numéro) ne s'invente pas : elle reste dans la grille, qui la signale au relecteur. N'insère JAMAIS d'emplacement à compléter (« [المدينة] », « [...] », « [ville] ») ni de description qu'aucune version du communiqué ne donne : le résumé est fourni par les parties.` : ''}`;
+- Renseigne ton résultat avec l'outil rapport_corrections : synthèse en 2 ou 3 phrases et note de 1 à 10.`;
 
   const full = String(text || '');
   const doc = full.substring(0, MAX_DOC_CHARS);
@@ -492,7 +450,7 @@ export default async function handler(req, res) {
       // Rapports : modèle de la relecture de langue au choix (Opus 5.5 par défaut depuis
       // l'essai CVC/IFF du 13/11 : plus de fautes relevées que Sonnet, aucune correction
       // fautive ; Haiku 5.5 n'avait relevé qu'une faute sur six sur Kenta).
-      callStructured({ apiKey, system, user, tool: isCommunique(docType) ? ANALYZE_TOOL_CP : ANALYZE_TOOL, maxTokens: MAX_TOKENS, model: docType === 'rapport' ? 'claude-opus-5-5' : body.modele }),
+      callStructured({ apiKey, system, user, tool: ANALYZE_TOOL, maxTokens: MAX_TOKENS, model: docType === 'rapport' ? 'claude-opus-5-5' : body.modele }),
       verifierEnLigne ? verifyEntities({ apiKey, text, docType, envoi }) : Promise.resolve(null),
     ]);
 
@@ -549,10 +507,6 @@ export default async function handler(req, res) {
       .concat(isLetter(docType) ? runLetterChecks({ text, docType, envoi }).warnings : [])
       .concat(proto.warnings || [])
       .concat(datePass.warnings)
-      .concat(isCommunique(docType) ? (parsed.controle_societes || []).flatMap(g => {
-        const manque = [g.droit_applicable === 'absent' && 'droit applicable', g.immatriculation === 'absente' && 'immatriculation'].filter(Boolean);
-        return manque.length && g.societe ? [{ kind: 'grille', message: `« ${g.societe} » : ${manque.join(' et ')} non indiqué${manque.length > 1 ? 's' : (manque[0] === 'immatriculation' ? 'e' : '')} dans le résumé (à vérifier auprès des parties).` }] : [];
-      }) : [])
       .concat(verif ? verif.warnings : []);
 
     return res.status(200).json({
@@ -563,7 +517,6 @@ export default async function handler(req, res) {
       warnings,
       verifications: verif ? verif.verifications : [],
       categorie: proto.categorie || null,
-      grille: isCommunique(docType) ? { societes: parsed.controle_societes || [], sens: parsed.controle_sens || [] } : null,
       appel: parsed._meta || null,
     });
   } catch (e) {

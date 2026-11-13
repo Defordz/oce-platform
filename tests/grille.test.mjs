@@ -1,19 +1,20 @@
-// Communiqués : grille de relecture obligatoire, consignes de comparaison FR/AR
-// écartées de l'analyse d'un document seul, modèle et température renvoyés.
+// Communiqués : retour au fonctionnement du 03/11 (grille de relecture retirée le
+// 13/11), garde-fous déterministes conservés, modèle et température renvoyés.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import seed from '../lib/consignesSeed.js';
 import { buildPrompt } from '../api/analyze.js';
 process.env.APP_PASSWORD = 'essai';
 
-test('prompt des communiqués : grille demandée, consignes B-0x absentes', () => {
+test('prompt des communiqués : comme au 03/11, sans grille de relecture', () => {
   const p = buildPrompt({ text: 'x', docType: 'cp_ar', opts: { forme: true, fond: true, terminologie: true }, consignes: seed });
-  assert.ok(p.system.includes('controle_societes'));
-  assert.ok(!/\[B-0\d\]/.test(p.system));
+  assert.ok(!p.system.includes('controle_societes'));
+  assert.ok(!p.system.includes('MÉTHODE (communiqués)'));
+  assert.ok(p.system.includes('concentre-toi sur ce qui demande du jugement'));
   const d = buildPrompt({ text: 'x', docType: 'decision_ar', opts: { forme: true, fond: true }, consignes: seed });
   assert.ok(!d.system.includes('controle_societes'));
 });
-test('schéma imposé aux communiqués et réponse enrichie', async () => {
+test('communiqués : même outil que les autres documents, modèle et température renvoyés', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
   let sent;
   const saved = globalThis.fetch;
@@ -24,14 +25,15 @@ test('schéma imposé aux communiqués et réponse enrichie', async () => {
   const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
   await handler({ method: 'POST', headers: { 'x-app-password': 'essai' }, body: { docType: 'cp_fr', opts: { forme: true, fond: true }, consignes: [], text: 'Communiqué' } }, res);
   globalThis.fetch = saved;
-  assert.deepEqual(sent.tools[0].input_schema.required.slice(0, 2), ['controle_societes', 'controle_sens']);
+  assert.deepEqual(sent.tools[0].input_schema.required, ['corrections', 'synthese', 'score']);
+  assert.ok(!('controle_societes' in sent.tools[0].input_schema.properties));
   assert.equal(sent.temperature, 0);
-  assert.equal(res.body.grille.societes.length, 1);
+  assert.equal(res.body.grille, undefined);
   assert.equal(res.body.appel.modele, 'claude-opus-5-5');
   assert.equal(res.body.appel.temperature, 0);
 });
 
-test('garde-fous : emplacements à compléter et doublons des règles écartés, signalements de la grille', async () => {
+test('garde-fous : emplacements à compléter et doublons des règles écartés', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
   let sent;
   const saved = globalThis.fetch;
@@ -51,7 +53,7 @@ test('garde-fous : emplacements à compléter et doublons des règles écartés,
   assert.ok(!sugg.some(x => x.includes('[المدينة]')), 'emplacement à compléter écarté');
   assert.equal(res.body.corrections.filter(c => c.original.startsWith('القطاع')).length, 1, 'un seul A-15');
   assert.ok(sugg.includes('مجموعتي (Volkswagen) و(Gotion) يخص'));
-  assert.ok(res.body.warnings.some(w => w.kind === 'grille' && w.message.includes('Gotion GmbH')));
+  assert.ok(!res.body.warnings.some(w => w.kind === 'grille'));
 });
 
 test('doublon d’une règle de pays proposé sans la virgule (Sonnet) : écarté', async () => {
