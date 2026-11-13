@@ -179,14 +179,19 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
   // un mot courant : il n'est pas remplacé seul, sinon chaque « En outre » deviendrait un code.
   const distinctifs = n => motsDistinctifs(n).filter(w => MAJ.test(w) && !minuscules.has(w.toLowerCase()));
   const COMPOSE = new RegExp(`[A-ZÀ-ÖØ-ÞŒ][${L}]+(?:-[A-ZÀ-ÖØ-Þa-zà-ÿ][${L}]+)+`, 'gu');
-  const denomination = n => {
-    // Nom composé avec trait d'union (« Avant-Scène ») : remplacé en entier, ses mots
-    // ne sont pas remplacés isolément (« avant » reste un mot courant).
+  // Nom de société : un nom composé avec trait d'union (« Avant-Scène ») est remplacé en
+  // entier et ses mots ne le sont pas isolément (« avant » reste un mot courant) ; les
+  // autres mots distinctifs sont remplacés un à un. Renvoie vrai si un nom a été retenu.
+  const nomSociete = n => {
     const composes = (String(n).match(COMPOSE) || []).filter(c => !(c.match(RE_MOT) || []).every(w => STOP.has(w.toLowerCase())));
     composes.forEach(c => { const cle = 'phrase:' + c.toLowerCase(); if (!ent.has(cle)) ent.set(cle, { cle, type: 'SOC', source: 'ancre', phrase: c }); });
     const reste = composes.reduce((x, c) => x.replace(c, ' '), String(n));
     const mots = distinctifs(reste);
-    if (mots.length || composes.length) return mots.forEach(w => ajouter(w, 'SOC', 'ancre'));
+    mots.forEach(w => ajouter(w, 'SOC', 'ancre'));
+    return mots.length > 0 || composes.length > 0;
+  };
+  const denomination = n => {
+    if (nomSociete(n)) return;
     // Dénomination faite de mots courants : on la remplace en entier, ou seulement son
     // nom composé (« La Nouvelle Société Avant-Scène SA » -> « Avant-Scène »).
     let p = String(n).replace(new RegExp(`[ \u00a0,]+(?:${FORMES.split(' ').join('|')})\\.?$`, 'i'), '').replace(/^(?:la|le|les|l['’])\s*/i, '').trim();
@@ -205,16 +210,12 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
   for (const m of text.matchAll(reGuillAncre)) denomination(m[1]);
   const motMaj = `[A-ZÀ-ÖØ-ÞŒ][${L}'’&.-]*`;
   const reAncreN = new RegExp(`(?:^|[^${L}])(?:${ANCRES})[ \\u00a0]+(${motMaj}(?:[ \\u00a0]+(?:(?:&|et|de|du|des|e|y|und|and|of|di|del|della|van|von|der|für|for)[ \\u00a0]+)?${motMaj}){0,4})`, 'gu');
-  for (const m of text.matchAll(reAncreN)) distinctifs(m[1]).forEach(w => ajouter(w, 'SOC', 'ancre'));
+  for (const m of text.matchAll(reAncreN)) nomSociete(m[1]);
 
   // 3. Dénominations suivies d'une forme juridique : « Somapharma SARL », « CFAO Motors Maroc S.A. ».
   const reForme = new RegExp(`((?:${motMaj}[ \\u00a0]+(?:(?:&|et|de|du|des|e|y|und|and|of|di|del|della|van|von|der|für|for)[ \\u00a0]+)?){1,5})(?:S\\.?A\\.?S\\.?U?|S\\.?A\\.?R\\.?L\\.?(?:[ \\u00a0]?A\\.?U\\.?)?|SARLAU|S\\.A\\.|SA|SCA|SCSp|SCSP|SCS|SNC|GmbH|KG|Ltd|Limited|LLC|LLP|L\\.?P\\.|LP|Inc|Corporation|Corp|PLC|Plc|AG|ApS|A\\/S|AB|Oy|B\\.?V\\.?|N\\.?V\\.?|S\\.p\\.A\\.|SpA|S\\.r\\.l\\.|Srl|S\\.?à[ \\u00a0]?r\\.?l\\.?|Sàrl|Pte|Pty|Ltda)(?![${L}])`, 'gu');
-  for (const m of text.matchAll(reForme)) {
-    motsDistinctifs(m[1]).forEach(w => {
-      // Hors ancre explicite, un mot qui existe aussi en minuscules est un mot courant (« Ainsi », « Selon »).
-      if (MAJ.test(w) && !minuscules.has(w.toLowerCase())) ajouter(w, 'SOC', 'ancre');
-    });
-  }
+  // (Un mot qui existe aussi en minuscules est un mot courant : « Ainsi », « Selon ».)
+  for (const m of text.matchAll(reForme)) nomSociete(m[1]);
 
   // 4. Termes définis : « (ci-après « TTC ») ».
   const reDef = new RegExp(`ci-après(?:[ \\u00a0]+(?:dénommée?s?|désignée?s?|appelée?s?|ensemble))?[ \\u00a0]*,?[ \\u00a0]*(?:(?:la|le|les|l['’])[ \\u00a0]*)?«[ \\u00a0]*([^»\\n]{1,60}?)[ \\u00a0]*»`, 'giu');
@@ -232,7 +233,7 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
       if (lignes.length < k + 2) continue;
       lignes[k].forEach((h, j) => {
         if (!ENTETE.test(h)) return;
-        lignes.slice(k + 1).forEach(r => motsDistinctifs(r[j] || '').forEach(w => { if (MAJ.test(w) && !minuscules.has(w.toLowerCase())) ajouter(w, 'SOC', 'ancre'); }));
+        lignes.slice(k + 1).forEach(r => nomSociete(r[j] || ''));
       });
     }
   }
