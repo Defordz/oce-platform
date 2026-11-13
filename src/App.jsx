@@ -338,7 +338,10 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [notes, setNotes] = useState([]); // notes de bas de page du rapport
   const [docXmlRapport, setDocXmlRapport] = useState(null); // document.xml et styles.xml du rapport (tableaux, capitales)
   const [cout, setCout] = useState(null);  // coût réel de l'analyse, en dollars
-  const [modeleLangue, setModeleLangue] = useState("claude-opus-5-5"); // CVC/IFF 13/11 : Opus plus précis que Sonnet, sans correction fautive
+  // Modèle fixé, sans choix pour l'utilisateur : Opus 5.5, retenu après les essais du
+  // 13/11 (Haiku : une faute sur six sur Kenta ; Sonnet : moins de fautes relevées et
+  // des corrections fautives sur CVC/IFF). La cohérence passe aussi par Opus.
+  const modeleLangue = "claude-opus-5-5";
   // Rapports : noms des sociétés et des personnes remplacés par des codes avant l'envoi.
   const [pseudoOn, setPseudoOn] = useState(true);
   const [noms, setNoms] = useState([]);
@@ -998,16 +1001,6 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 </div>
               </div>
             ))}
-            {cfg.rapport && optsR.langue && (
-              <div style={{display:"flex",alignItems:"center",gap:8,margin:"0 0 6px"}}>
-                <span style={{fontSize:10.5,color:C.text3}}>Modèle pour la langue</span>
-                <select value={modeleLangue} onChange={e => setModeleLangue(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:11,color:C.text2,background:"#fff"}}>
-                  <option value="claude-haiku-5-5">Haiku 5.5 (le moins cher)</option>
-                  <option value="claude-sonnet-5-5">Sonnet 5.5</option>
-                  <option value="claude-opus-5-5">Opus 5.5 (le plus précis)</option>
-                </select>
-              </div>
-            )}
             {cfg.rapport && fileContent && <div style={{fontSize:10,color:C.text3,margin:"2px 0 4px"}}>{decouper(fileContent + "\n" + notes.flatMap(n => n.paras).join("\n")).length} partie(s) à relire pour la langue · {Math.round(fileContent.length / 1000)} 000 caractères{notes.length ? ` et ${notes.length} notes de bas de page` : ""}</div>}
             {!cfg.rapport && [["forme","Corrections de forme","Orthographe, syntaxe, typographie"],["fond","Corrections de fond","Qualification juridique, structure"],["terminologie","Terminologie consacrée","Termes loi n°104-12"]].map(([k,label,sub]) => (
               <div key={k} onClick={() => setOpts(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${opts[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:opts[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>

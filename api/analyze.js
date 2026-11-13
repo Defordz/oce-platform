@@ -492,7 +492,7 @@ export default async function handler(req, res) {
       // Rapports : modèle de la relecture de langue au choix (Opus 5.5 par défaut depuis
       // l'essai CVC/IFF du 13/11 : plus de fautes relevées que Sonnet, aucune correction
       // fautive ; Haiku 5.5 n'avait relevé qu'une faute sur six sur Kenta).
-      callStructured({ apiKey, system, user, tool: isCommunique(docType) ? ANALYZE_TOOL_CP : ANALYZE_TOOL, maxTokens: MAX_TOKENS, model: docType === 'rapport' ? (body.modele || 'claude-opus-5-5') : body.modele }),
+      callStructured({ apiKey, system, user, tool: isCommunique(docType) ? ANALYZE_TOOL_CP : ANALYZE_TOOL, maxTokens: MAX_TOKENS, model: docType === 'rapport' ? 'claude-opus-5-5' : body.modele }),
       verifierEnLigne ? verifyEntities({ apiKey, text, docType, envoi }) : Promise.resolve(null),
     ]);
 
