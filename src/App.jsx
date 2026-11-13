@@ -786,7 +786,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
       {cfg.rapport && (
         <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:8,fontSize:12,color:C.text,lineHeight:1.55}}>
-          Rapport confidentiel : avant l'envoi au modèle d'Anthropic, les noms des sociétés et des personnes sont remplacés par des codes dans votre navigateur, et remis en clair dans le résultat. Vérifiez la liste des noms remplacés avant de lancer l'analyse. Les chiffres, les dates et les autres mentions restent lisibles.
+          Rapport confidentiel : avant l'envoi au modèle d'Anthropic, les noms des sociétés et des personnes, les adresses et les numéros d'immatriculation sont remplacés par des codes dans votre navigateur, et remis en clair dans le résultat : le modèle ne reçoit jamais le rapport réel. Vérifiez la liste avant de lancer l'analyse. Les chiffres, les dates et les marques non cochées restent lisibles.
         </div>
       )}
 
@@ -900,11 +900,11 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
               </div>
               <div>
                 <div style={{fontSize:12,fontWeight:500,color:C.text}}>Remplacer les noms des sociétés et des personnes</div>
-                <div style={{fontSize:10,color:C.text3,marginTop:1}}>Le modèle ne voit que des codes ([SOC_1], [PERS_2]…) ; les vrais noms sont remis dans le rapport relu</div>
+                <div style={{fontSize:10,color:C.text3,marginTop:1}}>Avec les adresses et les numéros d'immatriculation. Le modèle ne voit que des codes ([SOC_1], [PERS_2], [ADR_3]…) ; les vrais noms sont remis dans le rapport relu</div>
               </div>
             </div>
             {pseudoOn && (<>
-              {[["SOC","Sociétés et groupes","Le nom distinctif est remplacé ; « SA », « Groupe », « Maroc »… restent lisibles."],["PERS","Personnes","Prénoms et noms."],["NOM","Autres noms propres repérés","Marques, lieux, concurrents cités dans les tableaux… Cochez ceux qui sont des sociétés ou des personnes."]].map(([type,titre,aide]) => {
+              {[["SOC","Sociétés et groupes","Le nom distinctif est remplacé ; « SA », « Groupe », « Maroc »… restent lisibles."],["PERS","Personnes","Prénoms et noms."],["ADR","Adresses","Numéro, voie, code postal, quartier et ville."],["ID","Numéros d'immatriculation","Registre du commerce, ICE, identifiant fiscal…"],["NOM","Autres noms propres repérés","Marques, lieux, concurrents cités dans les tableaux… Cochez ceux qui sont des sociétés ou des personnes."]].map(([type,titre,aide]) => {
                 const liste = noms.filter(e => e.type === type);
                 if (!liste.length) return null;
                 const coches = liste.filter(e => e.coche).length;
@@ -929,7 +929,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
               <div style={{fontSize:10.5,fontWeight:500,color:C.text2,margin:"6px 0 3px"}}>Ajouter un nom oublié (un par ligne)</div>
               <textarea value={ajoutsNoms} onChange={e => setAjoutsNoms(e.target.value)} rows={2} placeholder={"Ex. : Sothema\nnuméro de registre du commerce"} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:11.5,color:C.text,boxSizing:"border-box",resize:"vertical"}}/>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
-                <span style={{fontSize:10,color:tablePseudo && tablePseudo.collision ? C.red : C.text3}}>{tablePseudo ? (tablePseudo.collision ? "Le rapport contient déjà des codes entre crochets : remplacement impossible." : `${tablePseudo.nombre} nom(s) remplacé(s)`) : ""}</span>
+                <span style={{fontSize:10,color:tablePseudo && tablePseudo.collision ? C.red : C.text3}}>{tablePseudo ? (tablePseudo.collision ? "Le rapport contient déjà des codes entre crochets : remplacement impossible." : `${tablePseudo.nombre} élément(s) remplacé(s)`) : ""}</span>
                 <span onClick={() => setApercu(v => !v)} style={{fontSize:10.5,color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>{apercu ? "Masquer le texte envoyé" : "Voir le texte envoyé"}</span>
               </div>
               {apercu && tablePseudo && (

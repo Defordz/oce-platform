@@ -92,3 +92,21 @@ test('sigle donné entre parenthèses après une dénomination', () => {
   assert.ok(entites.some(e => e.libelle === 'CODIPAC' && e.type === 'SOC' && e.coche));
   assert.ok(entites.some(e => e.libelle === 'Commerce et Distribution des Produits Alimentaires' && e.coche));
 });
+
+test('adresses et numéros d\'immatriculation remplacés en entier, aller-retour exact', () => {
+  const t = `La société « Meaban Maroc » est immatriculée au registre du commerce de Casablanca sous le numéro 97789, dont le siège social est situé au numéro 106, rue Abderrahman Sehraoui à Casablanca. Le groupe a son siège aux numéros 57-59 rue Yves Kermen, 92100 Boulogne-Billancourt, immatriculée au registre du commerce et des sociétés de Nanterre sous le numéro B 552 056 152.
+Identifiant commun de l’entreprise n° 002204262000052
+La mise en place du contrat, au cours de l'exercice 2025, porte sur la route du nord.`;
+  const { entites } = detecterNoms(t);
+  const table = construireTable(t, entites);
+  const p = pseudonymiser(t, table);
+  assert.match(p, /sous le numéro \[ID_1\], dont le siège social est situé au \[ADR_1\]\./);
+  assert.match(p, /aux \[ADR_2\], immatriculée/);
+  assert.match(p, /sous le numéro \[ID_2\]\./);
+  assert.match(p, /n° \[ID_3\]/);
+  assert.match(p, /mise en place du contrat, au cours de l'exercice 2025, porte sur la route du nord/); // mots de voie ordinaires laissés
+  assert.ok(!/Sehraoui|Kermen|97789|552 056|0022042/.test(p), p);
+  assert.equal(restaurer(p, table).texte, t);
+  // Les mots d'une adresse remplacée ne sont pas proposés en plus.
+  assert.ok(!entites.some(e => e.type === 'NOM' && /Sehraoui|Kermen/.test(e.libelle)));
+});

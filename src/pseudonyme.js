@@ -20,11 +20,11 @@ const RE_MOT = new RegExp(`[${L}]+`, 'g');
 const MAJ = /^[A-ZÀ-ÖØ-ÞŒ]/;
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-export const TYPES = { SOC: 'Sociétés et groupes', PERS: 'Personnes', NOM: 'Autres noms cochés' };
+export const TYPES = { SOC: 'Sociétés et groupes', PERS: 'Personnes', ADR: 'Adresses', ID: "Numéros d'immatriculation", NOM: 'Autres noms cochés' };
 
 // Code tel qu'il circule : [SOC_1], [PERS_3], [NOM_2], variante [SOC_1_2].
 // Au retour, on tolère un code sans crochets ou avec des espaces.
-const RE_CODE = /\[\s*((?:SOC|PERS|NOM)_\d+(?:_\d+)?)\s*\]|\b((?:SOC|PERS|NOM)_\d+(?:_\d+)?)\b/g;
+const RE_CODE = /\[\s*((?:SOC|PERS|NOM|ADR|ID)_\d+(?:_\d+)?)\s*\]|\b((?:SOC|PERS|NOM|ADR|ID)_\d+(?:_\d+)?)\b/g;
 
 // Mots jamais remplacés : formes juridiques, mots génériques des dénominations,
 // institutions, titres, structure du rapport, pays, sigles courants.
@@ -152,11 +152,48 @@ export function detecterNoms(text) {
   const reSigle = /»[ \u00a0]*\([ \u00a0]*«[ \u00a0]*([^»\n]{2,40}?)[ \u00a0]*»[ \u00a0]*\)/gu;
   for (const m of text.matchAll(reSigle)) motsDistinctifs(m[1]).forEach(w => { if (MAJ.test(w) && !minuscules.has(w.toLowerCase())) ajouter(w, 'SOC', 'ancre'); });
 
-  // 5. Suggestions (décochées) : autres mots capitalisés jamais écrits en minuscules
+  // 5. Adresses et numéros d'immatriculation : remplacés en entier, tels qu'ils sont écrits.
+  const zones = []; // passages couverts, pour ne pas en tirer de suggestions
+  const literal = (type, t, i) => {
+    t = t.replace(/[\s,]+$/, '');
+    if (t.length < 3) return;
+    zones.push([i, i + t.length]);
+    const cle = type.toLowerCase() + ':' + t.toLowerCase();
+    if (!ent.has(cle)) ent.set(cle, { cle, type, source: 'ancre', phrase: t });
+  };
+  const NUM = `(?:[A-Z][ \\u00a0]?)?\\d[\\d \\u00a0.]*\\d|\\d`;
+  const reRC = new RegExp(`(?:registre[ \\u00a0]+du[ \\u00a0]+commerce(?:[ \\u00a0]+et[ \\u00a0]+des[ \\u00a0]+sociétés)?(?:[ \\u00a0]+(?:de|d['’])[ \\u00a0]*[^\\s,;.]+(?:[ -][A-ZÀ-ÖØ-Þ][^\\s,;.]*)*)?|immatriculée?s?)[ \\u00a0]+sous[ \\u00a0]+le[ \\u00a0]+(?:numéro|n°)[ \\u00a0]*(${NUM})`, 'giu');
+  const reIdent = new RegExp(`(?:[Ii]dentifiant[ \\u00a0]+[Cc]ommun[ \\u00a0]+de[ \\u00a0]+l['’][ \\u00a0]*[Ee]ntreprise(?:[ \\u00a0]*\\([ \\u00a0]*ICE[ \\u00a0]*\\))?|[Ii]dentifiant[ \\u00a0]+[Ff]iscal|[Pp]atente|[Tt]axe[ \\u00a0]+[Pp]rofessionnelle|(?<![${L}])(?:ICE|IF|CNSS|RCS|R\\.?C\\.?|SIREN|SIRET)(?![${L}]))[ \\u00a0]*(?:[A-ZÀ-ÖØ-Þ][${L}-]+[ \\u00a0]+)?(?:n°|N°|numéro|:)?[ \\u00a0]*:?[ \\u00a0]*(${NUM})`, 'gu');
+  for (const re of [reRC, reIdent]) for (const m of text.matchAll(re)) {
+    if (/^\\d{4}$/.test(m[1].trim())) continue; // une année n'est pas un numéro d'immatriculation
+    literal('ID', m[1], m.index + m[0].length - m[1].length);
+  }
+  // Adresse : numéro (ou kilomètre) et voie, puis code postal, quartier, ville.
+  // Un mot de voie seul (« mise en place », « au cours de ») ne suffit pas : il faut
+  // un numéro devant, ou un siège, une adresse, une domiciliation juste avant.
+  const VOIE = 'rue|avenue|av\\.|boulevard|bd\\.?|bld\\.?|place|allée|impasse|route|chemin|quai|lotissement|lot\\.|zone|parc|quartier|hay|résidence|immeuble|angle|cité|square|cours|esplanade|technopole|technopark|B\\.?P\\.?|boîte postale';
+  const reAdr = new RegExp(`(?<![${L}])((?:(?:n°|N°|numéros?|nos?\\.?)[ \\u00a0]*\\d+[A-Za-z]?(?:[ \\u00a0]*[-–/][ \\u00a0]*\\d+)?(?:[ \\u00a0]*(?:bis|ter))?[ \\u00a0]*,?[ \\u00a0]*|(?:kilomètre|km)[ \\u00a0]*\\d+(?:[,.]\\d+)?[ \\u00a0]+(?:(?:de|du|sur)[ \\u00a0]+(?:la[ \\u00a0]+|l['’])?)?|\\d+[A-Za-z]?(?:[ \\u00a0]*[-–/][ \\u00a0]*\\d+)?(?:[ \\u00a0]*(?:bis|ter))?[ \\u00a0]*,?[ \\u00a0]*)?)(?:${VOIE})(?![${L}])[^,;.\\n()«»]{0,70}?(?=[ \\u00a0]+à[ \\u00a0]|[,;.\\n()«»]|$)`, 'giu');
+  const SEG = new RegExp(`^(?:,[ \\u00a0]*(?:\\d{4,5}[ \\u00a0]+[A-ZÀ-ÖØ-Þ][${L}'’ -]{1,40}?|(?:${VOIE})(?![${L}])[^,;.\\n()«»]{0,50}?|(?:à[ \\u00a0]+)?[A-ZÀ-ÖØ-Þ][${L}'’-]+(?:[ \\u00a0-][A-ZÀ-ÖØ-Þ][${L}'’-]+){0,3})|[ \\u00a0]+à[ \\u00a0]+[A-ZÀ-ÖØ-Þ][${L}'’-]+(?:[ \\u00a0-][A-ZÀ-ÖØ-Þ][${L}'’-]+){0,2})(?=[ \\u00a0]*(?:[,;.\\n()«»]|à[ \\u00a0]|$))`, 'u');
+  const INTRO = /(?:siège|situé|située|situés|sis|sise|sises|domicili|adresse|établie?s?|implantée?s?)[^.;\n]{0,40}$/i;
+  for (const m of text.matchAll(reAdr)) {
+    if (!m[1] && !INTRO.test(text.slice(Math.max(0, m.index - 60), m.index))) continue;
+    let fin = m.index + m[0].length, k;
+    for (k = 0; k < 6; k++) {
+      const s2 = SEG.exec(text.slice(fin, fin + 120));
+      if (!s2 || STOP.has(s2[0].replace(/^[, \u00a0]*(?:à[ \u00a0]+)?/, '').split(/[ \u00a0]/)[0].toLowerCase()) && !/^[, \u00a0]*\d/.test(s2[0]) && !new RegExp(`^[, \\u00a0]*(?:${VOIE})`, 'i').test(s2[0])) break;
+      fin += s2[0].length;
+    }
+    literal('ADR', text.slice(m.index, fin), m.index);
+  }
+  const dansZone = i => zones.some(([a, b]) => i >= a && i < b);
+
+  // 6. Suggestions (décochées) : autres mots capitalisés jamais écrits en minuscules
   //    (concurrents des tableaux, mais aussi lieux et marques : à trier par l'utilisateur).
-  for (const [w, pos] of occ) {
+  for (const [w, tous] of occ) {
     const cle = w.toLowerCase();
     if (ent.has(cle) || !MAJ.test(w) || w.length < 3 || STOP.has(cle) || minuscules.has(cle)) continue;
+    const pos = tous.filter(i => !dansZone(i)); // mots d'une adresse déjà remplacée : rien à suggérer
+    if (!pos.length) continue;
     // Terminaisons de mots français courants (titres de colonnes, débuts de phrase).
     if (w !== w.toUpperCase() && SUFFIXES_FR.test(w)) continue;
     // Un mot qui n'apparaît qu'en tête de phrase hors tableau est le plus souvent un mot courant.
@@ -172,7 +209,7 @@ export function detecterNoms(text) {
     if (e.phrase) {
       const vu = new Map();
       for (const m of text.matchAll(new RegExp(`(?<![${L}0-9_])${esc(e.phrase).replace(/ /g, '[ \\u00a0]+')}(?![${L}0-9_])`, 'giu'))) {
-        if (m[0] === m[0].toLowerCase()) continue;
+        if (e.type === 'SOC' && m[0] === m[0].toLowerCase()) continue;
         if (!vu.has(m[0])) vu.set(m[0], { forme: m[0], n: 0, premier: m.index });
         vu.get(m[0]).n++;
       }
@@ -188,7 +225,7 @@ export function detecterNoms(text) {
     formes.sort((a, b) => b.n - a.n || capitales(a) - capitales(b) || a.premier - b.premier);
     entites.push({ cle: e.cle, type: e.type, libelle: formes[0].forme, formes: formes.map(({ forme, n }) => ({ forme, n })), n: formes.reduce((s, f) => s + f.n, 0), source: e.source, coche: e.source !== 'suggestion', premier: Math.min(...formes.map(f => f.premier)) });
   }
-  const ordreType = { SOC: 0, PERS: 1, NOM: 2 };
+  const ordreType = { SOC: 0, PERS: 1, ADR: 2, ID: 3, NOM: 4 };
   entites.sort((a, b) => ordreType[a.type] - ordreType[b.type] || b.n - a.n);
   return { entites };
 }
@@ -220,7 +257,7 @@ export function construireTable(text, entites, ajouts = []) {
   }
   // Numérotation par type, dans l'ordre d'apparition.
   retenues.sort((a, b) => (a.premier ?? 0) - (b.premier ?? 0));
-  const compteur = { SOC: 0, PERS: 0, NOM: 0 };
+  const compteur = { SOC: 0, PERS: 0, ADR: 0, ID: 0, NOM: 0 };
   const paires = [], inverse = new Map();
   for (const e of retenues) {
     const base = `${e.type}_${++compteur[e.type]}`;
