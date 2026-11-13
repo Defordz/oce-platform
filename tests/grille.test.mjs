@@ -79,7 +79,7 @@ test('coût d’un appel d’après les jetons (tarifs du 13/11/2026)', async ()
   assert.equal(coutAppel('claude-haiku-5-5', { input_tokens: 120000, output_tokens: 0 }), 120000 * 0.5 / 1e6, 'tarif long au-delà de 100 000 jetons');
   assert.equal(coutAppel('inconnu', {}), null);
 });
-test('rapports : langue sur Sonnet 5.5 par défaut, modèle choisi respecté', async () => {
+test('rapports : langue sur Opus 5.5 par défaut, coût calculé au tarif du modèle', async () => {
   process.env.ANTHROPIC_API_KEY = 'k';
   let sent;
   const saved = globalThis.fetch;
@@ -88,6 +88,6 @@ test('rapports : langue sur Sonnet 5.5 par défaut, modèle choisi respecté', a
   const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
   await handler({ method: 'POST', headers: {}, body: { docType: 'rapport', opts: { forme: true }, consignes: [], text: 'Le rapport.' } }, res);
   globalThis.fetch = saved;
-  assert.equal(sent.model, 'claude-sonnet-5-5');
-  assert.equal(res.body.appel.cout, (4000 * 2 + 300 * 10) / 1e6);
+  assert.equal(sent.model, 'claude-opus-5-5');
+  assert.equal(res.body.appel.cout, (4000 * 4 + 300 * 20) / 1e6);
 });
