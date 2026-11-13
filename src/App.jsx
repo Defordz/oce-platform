@@ -265,7 +265,7 @@ const CORRECTION_VARIANTS = {
   },
   rapport: {
     title: "Corriger les rapports d'instruction",
-    sub: "Langue en suivi des modifications · Cohérence et contradictions en commentaires Word",
+    sub: "Langue en suivi des modifications · Contradictions et chiffres en commentaires Word",
     docTypes: [["rapport","Rapport d'instruction","En français"]],
     defaultType: "rapport",
     allowDemo: false,
@@ -286,6 +286,7 @@ function decouper(text, max = RAPPORT_PARTIE) {
   if (cur) parts.push(cur);
   return parts;
 }
+const dollars = v => (v == null ? "?" : v.toLocaleString("fr-FR", { minimumFractionDigits: v < 0.1 ? 3 : 2, maximumFractionDigits: v < 0.1 ? 3 : 2 }) + " $");
 const CAT_OBS = {contradiction:"Contradiction",chiffres:"Chiffres",dates:"Dates",denominations:"Dénominations",qualification:"Qualification",conclusion:"Conclusion",renvois:"Renvois",autre:"Observation"};
 
 function CorrectionPage({consignes, history, setHistory, variant}) {
@@ -327,6 +328,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [observations, setObservations] = useState([]);
   const [obsStatus, setObsStatus] = useState({});
   const [notes, setNotes] = useState([]); // notes de bas de page du rapport
+  const [cout, setCout] = useState(null);  // coût réel de l'analyse, en dollars
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -392,7 +394,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   // la cohérence sur le document entier, les deux en parallèle.
   const analyzeRapport = async text => {
     if (!optsR.langue && !optsR.coherence) { setError("Choisissez au moins une relecture."); return; }
-    setPhase("loading"); setError(""); setNotApplied([]); setWarnings([]); setStatuses({}); setObsStatus({}); setObservations([]); setGrille(null); setAppel(null);
+    setPhase("loading"); setError(""); setNotApplied([]); setWarnings([]); setStatuses({}); setObsStatus({}); setObservations([]); setGrille(null); setAppel(null); setCout(null);
+    let coutLangue = 0;
     // Langue : corps puis notes de bas de page (texte brut, pour que les extraits se retrouvent).
     const texteLangue = notes.length ? text + "\n" + notes.flatMap(n => n.paras).join("\n") : text;
     // Cohérence : notes numérotées comme dans le document.
@@ -410,7 +413,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
           const k = next++;
           let essai = 0;
           while (true) {
-            try { const d = await post("/api/analyze", { text: parts[k], docType: "rapport", opts: { forme: true }, consignes }); res[k] = d.corrections || []; if (d.appel) setAppel(d.appel); break; }
+            try { const d = await post("/api/analyze", { text: parts[k], docType: "rapport", opts: { forme: true }, consignes }); res[k] = d.corrections || []; if (d.appel && d.appel.cout) coutLangue += d.appel.cout; break; }
             catch (e) { if (++essai >= 2) { res[k] = []; avert.push({ kind: "langue", message: `Partie ${k + 1} sur ${parts.length} non relue (${e.message}). Relancez l'analyse pour la reprendre.` }); break; } }
           }
           faits++; setProgress(p => ({ ...p, faits }));
@@ -434,7 +437,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     setWarnings(avert);
     setScore(null);
     setSynthese([optsR.langue ? `${corr.length} correction(s) de langue sur ${parts.length} partie(s) relue(s).` : "", coh ? coh.synthese : ""].filter(Boolean).join(" "));
-    if (coh && coh.appel) setAppel(coh.appel);
+    setAppel(null);
+    setCout({ langue: optsR.langue ? coutLangue : null, coherence: coh && coh.appel ? coh.appel.cout : null });
     setHistory(h => [{ id: Date.now(), file: fileName || "Rapport", type: "rapport", corrections: corr.length, score: null, date: new Date().toLocaleDateString("fr-FR"), data: corr, synthese: `${obs.length} observation(s) de cohérence` }, ...h]);
     setProgress(null);
     setPhase("results");
@@ -471,6 +475,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       setCorrections(parsed.corrections || []);
       setSynthese(parsed.synthese || "");
       setAppel(parsed.appel || null);
+      setCout(parsed.appel && parsed.appel.cout != null ? { total: parsed.appel.cout } : null);
       setGrille(parsed.grille || null);
       setWarnings(parsed.warnings || []);
       setVerifications(parsed.verifications || []);
@@ -849,7 +854,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
           <Card>
             <SLabel>{cfg.rapport ? "Relectures" : "Options de correction"}</SLabel>
-            {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications"],["coherence","Cohérence et contradictions","Chiffres, dates, dénominations, qualification, conclusions · commentaires Word"]].map(([k,label,sub]) => (
+            {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications · Haiku 5.5"],["coherence","Contradictions et chiffres","Contradictions majeures de faits, erreurs de chiffres · commentaires Word"]].map(([k,label,sub]) => (
               <div key={k} onClick={() => setOptsR(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${optsR[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:optsR[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
                 <div style={{width:15,height:15,border:`1.5px solid ${optsR[k]?C.navy2:C.border2}`,borderRadius:4,background:optsR[k]?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {optsR[k] && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
@@ -950,7 +955,11 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                     </div>
                   </details>
                 )}
-                {appel && <div style={{marginTop:6,fontSize:10,color:C.text3}}>Modèle : {appel.modele}</div>}
+                {(appel || cout) && <div style={{marginTop:6,fontSize:10,color:C.text3}}>
+                  {appel ? `Modèle : ${appel.modele}` : ""}
+                  {cout && cout.total != null ? `${appel ? " · " : ""}Coût de l'analyse : ${dollars(cout.total)}` : ""}
+                  {cout && cout.total == null && (cout.langue != null || cout.coherence != null) ? `Coût de l'analyse : ${dollars((cout.langue || 0) + (cout.coherence || 0))} (langue, Haiku 5.5 : ${cout.langue != null ? dollars(cout.langue) : "non lancée"} · cohérence, Opus 5.5 : ${cout.coherence != null ? dollars(cout.coherence) : "non lancée"})` : ""}
+                </div>}
               </Card>
 
               {verifications.length > 0 && (
@@ -978,7 +987,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
               {cfg.rapport && observations.length > 0 && (
               <Card>
-                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:4}}>Cohérence et contradictions ({observations.length})</div>
+                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:4}}>Contradictions et chiffres ({observations.length})</div>
                 <div style={{fontSize:10.5,color:C.text3,marginBottom:9}}>Chaque observation gardée devient un commentaire dans la marge du fichier Word, sur le paragraphe cité. Le texte n'est pas modifié.</div>
                 {observations.map((o,i) => {
                   const st = obsStatus[i];

@@ -1,7 +1,7 @@
 // api/coherence.js
 // Rapports d'instruction : relecture de COHÉRENCE du document entier.
-// Le modèle relève les contradictions et incohérences (chiffres, parts de
-// marché, dates, dénominations, qualification, conclusions, renvois) et rend,
+// Recentrée (13/11/2026) sur les contradictions majeures de faits et les
+// erreurs de chiffres, pour limiter le coût et le bruit ; le modèle rend,
 // pour chacune, l'extrait exact où l'ancrer. Les observations deviennent des
 // commentaires Word ; le texte n'est jamais modifié par cette relecture.
 
@@ -13,7 +13,7 @@ export const config = { maxDuration: 300 };
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MAX_CHARS = 400000;      // environ 100 000 mots
-const MAX_OBS = 30;
+const MAX_OBS = 15;
 
 export const COHERENCE_TOOL = {
   name: 'rapport_coherence',
@@ -26,11 +26,11 @@ export const COHERENCE_TOOL = {
         items: {
           type: 'object',
           properties: {
-            categorie: { type: 'string', enum: ['contradiction', 'chiffres', 'dates', 'denominations', 'qualification', 'conclusion', 'renvois', 'autre'] },
-            gravite: { type: 'string', enum: ['importante', 'a_verifier'], description: "« importante » : contradiction certaine ou erreur qui change le sens ; « a_verifier » : doute raisonnable." },
+            categorie: { type: 'string', enum: ['contradiction', 'chiffres'] },
+            gravite: { type: 'string', enum: ['importante', 'a_verifier'], description: "« importante » : contradiction certaine qui rend le rapport faux ; « a_verifier » : écart certain mais de faible portée (arrondi, écart minime)." },
             extrait: { type: 'string', description: 'Passage EXACT du rapport, mot pour mot, pris dans UN SEUL paragraphe (20 à 200 caractères), sur lequel ancrer le commentaire.' },
             extrait_lie: { type: 'string', description: "Le passage avec lequel le premier est en contradiction, mot pour mot (s'il y en a un), sinon chaîne vide." },
-            observation: { type: 'string', description: "Le constat, en français, en une à trois phrases : ce qui ne concorde pas et où. Pas de reformulation proposée." },
+            observation: { type: 'string', description: "Le constat, en français, en une ou deux phrases : ce qui ne concorde pas et où. Pas de reformulation proposée." },
           },
           required: ['categorie', 'gravite', 'extrait', 'extrait_lie', 'observation'],
         },
@@ -41,25 +41,21 @@ export const COHERENCE_TOOL = {
   },
 };
 
-export const SYSTEM = `Tu relis, pour le Conseil de la concurrence du Maroc, un RAPPORT D'INSTRUCTION relatif à une opération de concentration économique (loi n° 104-12, décret n° 2-14-652). Ta seule tâche est de vérifier sa COHÉRENCE INTERNE. Tu ne corriges ni la langue ni le style : une autre relecture s'en charge.
+export const SYSTEM = `Tu relis, pour le Conseil de la concurrence du Maroc, un RAPPORT D'INSTRUCTION relatif à une opération de concentration économique. Ta seule tâche : relever les CONTRADICTIONS MAJEURES DE FAITS et les ERREURS DE CHIFFRES, c'est-à-dire ce qui, laissé en l'état, rendrait le rapport faux.
 
-Le rapport est rédigé en français. Ses notes de bas de page figurent à la fin, numérotées « (n) » : elles font partie du rapport (sources, dates, références des pièces) et entrent dans la vérification.
+Le rapport est rédigé en français. Ses notes de bas de page figurent à la fin, numérotées « (n) » : elles font partie du rapport et entrent dans la vérification.
 
-Relève, en comparant les sections entre elles :
-1. CONTRADICTIONS : deux passages qui affirment des choses incompatibles (une partie dit qu'il n'existe pas de chevauchement d'activités, une autre analyse des effets horizontaux ; un marché défini comme national puis analysé comme régional ; une opération décrite comme contrôle exclusif puis conjoint).
-2. CHIFFRES : chiffres d'affaires, parts de marché, pourcentages de capital, montants, nombre d'entités ou de sites qui diffèrent d'une section à l'autre ; parts de marché d'un même marché dont la somme dépasse 100 % ; calcul des seuils de l'article 12 incohérent avec les chiffres donnés.
-3. DATES : chronologie impossible (complétude avant notification, réunion avant désignation du rapporteur), dates différentes pour un même acte.
-4. DÉNOMINATIONS : une même société ou un même marché désigné de façons différentes au point de créer une ambiguïté ; une partie citée qui n'est jamais présentée.
-5. QUALIFICATION : nature de l'opération, contrôle acquis, parties notifiantes, incohérents entre la présentation, l'analyse et la conclusion.
-6. CONCLUSION : conclusion ou proposition qui ne découle pas de l'analyse (analyse relevant un risque, conclusion à l'absence d'effet sans explication ; marché analysé mais absent de la conclusion, ou l'inverse).
-7. RENVOIS : renvoi à une section, une annexe, un tableau ou un graphique qui n'existe pas dans le document.
+Relève uniquement :
+1. CONTRADICTIONS DE FAITS : deux passages du rapport qui affirment des faits incompatibles. Exemples : deux personnes ou deux sociétés différentes pour le même rôle (titulaire d'une marque, acquéreur, entité qui prend le contrôle) ; une opération décrite comme contrôle exclusif puis conjoint ; un marché dit national puis analysé comme régional ; deux dates différentes pour le même acte ; une absence de chevauchement affirmée puis des chevauchements analysés.
+2. CHIFFRES : un même chiffre (chiffre d'affaires, part de marché, pourcentage de capital, prix, montant, nombre d'entités) qui diffère d'un passage à l'autre ; un total qui ne correspond pas à la somme de ses éléments ; des parts d'un même marché dont la somme dépasse 100 % ; une conversion ou un calcul de seuil (article 12) faux.
+
+Ne relève PAS : les omissions (« le rapport ne précise pas… »), les questions laissées ouvertes, les imprécisions, la structure ou le sommaire, les renvois, le style, la langue, l'appréciation concurrentielle elle-même. En cas de doute sur une contradiction, ne la relève pas.
 
 Méthode :
-- Lis tout le rapport avant de conclure. Ne signale que ce que le texte permet d'établir : pas d'hypothèse sur des faits extérieurs au document, pas d'avis sur le fond de l'analyse concurrentielle quand elle est cohérente.
-- Une observation par problème, même s'il revient plusieurs fois (cite le premier passage et, dans l'observation, les autres endroits). Au plus ${MAX_OBS} observations, les plus importantes d'abord.
-- « extrait » : recopie EXACTEMENT un passage du rapport (20 à 200 caractères, un seul paragraphe), sans corriger son orthographe ni sa ponctuation : il sert à placer le commentaire dans le fichier Word. Pour une note de bas de page, recopie son texte sans le numéro « (n) ».
-- Les montants s'écrivent en entier, sans abréviation (pas de « kMAD », « M MAD ») ni arrondi.
-- S'il n'y a aucune incohérence, renvoie une liste vide et dis-le dans la synthèse.
+- Lis tout le rapport avant de conclure. Ne t'appuie que sur le texte du rapport.
+- Une observation par problème. Au plus ${MAX_OBS} observations, les plus graves d'abord ; zéro si le rapport est cohérent.
+- « extrait » : recopie EXACTEMENT un passage du rapport (20 à 200 caractères, un seul paragraphe), sans corriger son orthographe ni sa ponctuation : il sert à placer le commentaire dans le fichier Word. Pour une note de bas de page, recopie son texte sans le numéro « (n) ». « extrait_lie » : le passage contradictoire, recopié de la même façon.
+- « observation » : une à deux phrases, factuelles. Les montants s'écrivent en entier, sans abréviation ni arrondi.
 Termine en appelant l'outil ${COHERENCE_TOOL.name}.`;
 
 function setCors(res) {
@@ -97,6 +93,7 @@ export default async function handler(req, res) {
       observations,
       synthese: out.synthese || '',
       appel: out._meta || null,
+      cout: out._meta ? out._meta.cout : null,
       avertissement: tronque ? `Rapport très long : seuls les ${MAX_CHARS.toLocaleString('fr-FR')} premiers caractères ont été relus pour la cohérence.` : '',
     });
   } catch (e) {

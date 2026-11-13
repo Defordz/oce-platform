@@ -26,7 +26,8 @@ test('schéma imposé aux communiqués et réponse enrichie', async () => {
   assert.deepEqual(sent.tools[0].input_schema.required.slice(0, 2), ['controle_societes', 'controle_sens']);
   assert.equal(sent.temperature, 0);
   assert.equal(res.body.grille.societes.length, 1);
-  assert.deepEqual(res.body.appel, { modele: 'claude-opus-5-5', temperature: 0 });
+  assert.equal(res.body.appel.modele, 'claude-opus-5-5');
+  assert.equal(res.body.appel.temperature, 0);
 });
 
 test('garde-fous : emplacements à compléter et doublons des règles écartés, signalements de la grille', async () => {
@@ -69,4 +70,24 @@ test('doublon d’une règle de pays proposé sans la virgule (Sonnet) : écart�
   assert.equal(o.filter(x => x.includes('Chine')).length, 1);
   assert.equal(o.filter(x => x.includes('Allemagne')).length, 1);
   assert.ok(o.includes('بـجمهورية'));
+});
+
+test('coût d’un appel d’après les jetons (tarifs du 13/11/2026)', async () => {
+  const { coutAppel } = await import('../lib/anthropic.js');
+  assert.equal(coutAppel('claude-opus-5-5', { input_tokens: 1e6, output_tokens: 1e6 }), 24);
+  assert.equal(coutAppel('claude-haiku-5-5', { input_tokens: 50000, output_tokens: 2000 }), (50000 * 0.1 + 2000 * 0.5) / 1e6);
+  assert.equal(coutAppel('claude-haiku-5-5', { input_tokens: 120000, output_tokens: 0 }), 120000 * 0.5 / 1e6, 'tarif long au-delà de 100 000 jetons');
+  assert.equal(coutAppel('inconnu', {}), null);
+});
+test('rapports : langue confiée à Haiku 5.5', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  let sent;
+  const saved = globalThis.fetch;
+  globalThis.fetch = async (u, o) => { sent = JSON.parse(o.body); return { ok: true, json: async () => ({ stop_reason: 'tool_use', usage: { input_tokens: 4000, output_tokens: 300 }, content: [{ type: 'tool_use', id: 't', name: 'rapport_corrections', input: { corrections: [], synthese: 's', score: 9 } }] }) }; };
+  const { default: handler } = await import('../api/analyze.js');
+  const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
+  await handler({ method: 'POST', headers: {}, body: { docType: 'rapport', opts: { forme: true }, consignes: [], text: 'Le rapport.' } }, res);
+  globalThis.fetch = saved;
+  assert.equal(sent.model, 'claude-haiku-5-5');
+  assert.equal(res.body.appel.cout, (4000 * 0.1 + 300 * 0.5) / 1e6);
 });
