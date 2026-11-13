@@ -74,12 +74,12 @@ const ANALYZE_TOOL = {
 const GRILLE = {
   controle_societes: {
     type: 'array',
-    description: "Une ligne par société citée dans le RÉSUMÉ NON CONFIDENTIEL (parties, filiales, entreprises communes), à sa première mention.",
+    description: "Une ligne par société que le RÉSUMÉ NON CONFIDENTIEL DÉCRIT (siège, droit applicable ou immatriculation indiqués), à sa première mention. Une société seulement citée en passant (actionnaire, filiale sans description) n'y figure pas.",
     items: {
       type: 'object',
       properties: {
         societe: { type: 'string' },
-        forme_juridique: { type: 'string', enum: ['indiquee', 'manquante', 'sans_objet'], description: "« manquante » si la forme (SA, SAS, SARL, AG, S.p.A.…) se déduit du nom ou du contexte mais n'est pas écrite dans la description." },
+        forme_juridique: { type: 'string', enum: ['indiquee', 'manquante', 'sans_objet'], description: "« manquante » seulement si le nom porte une forme sans ambiguïté (SA, S.A., SAS, SARL, AG, GmbH, S.p.A., S.A.U., SE) et que la description ne l'écrit pas. « Co., Ltd », « Ltd », « Inc. », « LLC » ou aucun sigle : « sans_objet »." },
         droit_applicable: { type: 'string', enum: ['conforme', 'a_corriger', 'absent', 'sans_objet'], description: "Formule consacrée : « de droit [pays] » / « خاضعة للقانون [البلد] »." },
         immatriculation: { type: 'string', enum: ['conforme', 'a_corriger', 'absente', 'sans_objet'], description: "Formule consacrée : « immatriculée au Registre du Commerce de [ville] sous le numéro … » / « مسجلة في السجل التجاري ب… تحت رقم … »." },
         denomination_constante: { type: 'boolean', description: 'La dénomination est écrite exactement de la même façon partout dans le document (majuscules, ponctuation, Ltd./S.A.).' },
@@ -208,7 +208,8 @@ ${datesRule}
 - "code" est EXACTEMENT l'un des codes de consignes listés plus haut (ex: F-03, D-04, T-01), ou une chaîne vide. N'invente JAMAIS un code.
 - N'invente pas d'erreur : en cas de doute, ne corrige pas.
 - Renseigne ton résultat avec l'outil rapport_corrections : synthèse en 2 ou 3 phrases et note de 1 à 10.${isCommunique(docType) ? `
-- MÉTHODE (communiqués) : remplis d'abord la grille. « controle_societes » : une ligne pour CHAQUE société du résumé, sans exception. « controle_sens » : chaque fait du communiqué, comparé au titre, au tableau et aux autres paragraphes ; lis chaque phrase pour ce qu'elle dit réellement (qui fournit quoi à qui, qui contrôle qui) et signale un contresens. Puis, dans « corrections », une correction pour CHAQUE case « manquante », « a_corriger », « absent(e) », pour chaque dénomination non constante et pour chaque fait « incoherent ».` : ''}`;
+- MÉTHODE (communiqués) : remplis d'abord la grille. « controle_societes » : une ligne pour CHAQUE société que le résumé décrit. « controle_sens » : chaque fait du communiqué, comparé au titre, au tableau et aux autres paragraphes ; lis chaque phrase pour ce qu'elle dit réellement (qui fournit quoi à qui, qui contrôle qui) et signale un contresens. Puis, dans « corrections », une correction pour CHAQUE case « manquante » ou « a_corriger », pour chaque dénomination non constante (corrige TOUTES ses occurrences) et pour chaque fait « incoherent ».
+- Une information ABSENTE (droit applicable, immatriculation, numéro) ne s'invente pas : elle reste dans la grille, qui la signale au relecteur. N'insère JAMAIS d'emplacement à compléter (« [المدينة] », « [...] », « [ville] ») ni de description qu'aucune version du communiqué ne donne : le résumé est fourni par les parties.` : ''}`;
 
   const full = String(text || '');
   const doc = full.substring(0, MAX_DOC_CHARS);
@@ -430,7 +431,7 @@ export default async function handler(req, res) {
     // Analyse principale et, pour les lettres, vérification en ligne des
     // dénominations, menées en parallèle.
     const [parsed, verif] = await Promise.all([
-      callStructured({ apiKey, system, user, tool: isCommunique(docType) ? ANALYZE_TOOL_CP : ANALYZE_TOOL, maxTokens: MAX_TOKENS }),
+      callStructured({ apiKey, system, user, tool: isCommunique(docType) ? ANALYZE_TOOL_CP : ANALYZE_TOOL, maxTokens: MAX_TOKENS, model: body.modele }),
       verifierEnLigne ? verifyEntities({ apiKey, text, docType, envoi }) : Promise.resolve(null),
     ]);
 
@@ -454,7 +455,12 @@ export default async function handler(req, res) {
     });
     const realigned = (parsed.corrections || []).concat(verifCorr.filter((_, k) => !proto.merged.has(k)))
       .map(c => { const o = c && realignOriginal(text, c.original); return o && o !== c.original ? { ...c, original: o } : c; });
-    const claudeCorr = harmonizeWithRules(realigned, docType, consignes)
+    // Garde-fous : jamais d'emplacement à compléter inséré par le modèle ; jamais
+    // une correction que les règles automatiques font déjà (doublon).
+    const PLACEHOLDER = /\[[^\]]{0,20}\]|\[\.\.\.\]|…\]/;
+    const regleSeule = c => { const r = applyRules(c.original, docType, consignes); return r !== c.original && r.replace(/\s+/g, ' ').trim() === String(c.suggested || '').replace(/\s+/g, ' ').trim(); };
+    const filtered = realigned.filter(c => c && !(PLACEHOLDER.test(c.suggested || '') && !PLACEHOLDER.test(c.original || '')) && !regleSeule(c));
+    const claudeCorr = harmonizeWithRules(filtered, docType, consignes)
       .filter(c => !touchesExclusive(c)).map(aligne).filter(c => c.suggested.replace(/\s+/g, ' ').trim() !== c.original.replace(/\s+/g, ' ').trim());
     // Décisions : le bloc des signatures (après « تم التداول ») n'est jamais retouché.
     let kept = claudeCorr;
@@ -470,6 +476,10 @@ export default async function handler(req, res) {
       .concat(isLetter(docType) ? runLetterChecks({ text, docType, envoi }).warnings : [])
       .concat(proto.warnings || [])
       .concat(datePass.warnings)
+      .concat(isCommunique(docType) ? (parsed.controle_societes || []).flatMap(g => {
+        const manque = [g.droit_applicable === 'absent' && 'droit applicable', g.immatriculation === 'absente' && 'immatriculation'].filter(Boolean);
+        return manque.length && g.societe ? [{ kind: 'grille', message: `« ${g.societe} » : ${manque.join(' et ')} non indiqué${manque.length > 1 ? 's' : (manque[0] === 'immatriculation' ? 'e' : '')} dans le résumé (à vérifier auprès des parties).` }] : [];
+      }) : [])
       .concat(verif ? verif.warnings : []);
 
     return res.status(200).json({

@@ -292,6 +292,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   // Lettres : date d'envoi prevue (base des delais) et verification en ligne des denominations.
   const [envoi, setEnvoi] = useState(() => nextWorkingDay());
   const [verifierEnLigne, setVerifierEnLigne] = useState(true);
+  const [modele, setModele] = useState("claude-opus-5-5");
   const [verifications, setVerifications] = useState([]);
   const [destinataire, setDestinataire] = useState("auto");
   const [categorie, setCategorie] = useState(null);
@@ -362,7 +363,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        body: JSON.stringify({ text, docType, opts, consignes, dates: (hasDates && dateOn && pubDate) ? { publication: pubDate, deadline } : null,
+        body: JSON.stringify({ text, docType, opts, consignes, modele, dates: (hasDates && dateOn && pubDate) ? { publication: pubDate, deadline } : null,
           ...(cfg.letters ? { envoi, verifierEnLigne, destinataire } : {}) }),
       });
 
@@ -730,6 +731,13 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 </div>
               </div>
             ))}
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
+              <span style={{fontSize:10.5,color:C.text3}}>Modèle (essai)</span>
+              <select value={modele} onChange={e => setModele(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:11,color:C.text2,background:"#fff"}}>
+                <option value="claude-opus-5-5">Opus 5.5 (actuel)</option>
+                <option value="claude-sonnet-5-5">Sonnet 5.5 (moins cher)</option>
+              </select>
+            </div>
             <button onClick={analyze} disabled={phase==="loading"} style={{width:"100%",marginTop:9,padding:"9px",border:"none",borderRadius:7,background:phase==="loading"?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:phase==="loading"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
               {phase==="loading" ? <><Spinner/><span>Analyse en cours…</span></> : <><span>🔍</span><span>Analyser et corriger</span></>}
             </button>

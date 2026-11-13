@@ -28,3 +28,26 @@ test('schéma imposé aux communiqués et réponse enrichie', async () => {
   assert.equal(res.body.grille.societes.length, 1);
   assert.deepEqual(res.body.appel, { modele: 'claude-opus-5-5', temperature: 0 });
 });
+
+test('garde-fous : emplacements à compléter et doublons des règles écartés, signalements de la grille', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  let sent;
+  const saved = globalThis.fetch;
+  globalThis.fetch = async (u, o) => { sent = JSON.parse(o.body); return { ok: true, json: async () => ({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't', name: 'rapport_corrections', input: {
+    controle_societes: [{ societe: 'Gotion GmbH', forme_juridique: 'manquante', droit_applicable: 'absent', immatriculation: 'absente', denomination_constante: true }],
+    controle_sens: [], synthese: 's', score: 7, corrections: [
+      { type: 'fond', code: 'A-07', original: 'شركة «Gotion GmbH» بشوراني', suggested: 'شركة «Gotion GmbH»، مسجلة في السجل التجاري بـ[المدينة] تحت رقم [...]، بشوراني', reason: 'x' },
+      { type: 'terminologie', code: 'A-15', original: 'القطاع الاقتصادي المعني', suggested: 'القطاعات الاقتصادية المعنية', reason: 'y' },
+      { type: 'forme', code: '', original: 'مجموعتي (Volkswagen) و (Gotion)يخص', suggested: 'مجموعتي (Volkswagen) و(Gotion) يخص', reason: 'z' } ] } }] }) }; };
+  const { default: handler } = await import('../api/analyze.js');
+  const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
+  const text = 'القطاع الاقتصادي المعني:\nبين مجموعتي (Volkswagen) و (Gotion)يخص التزود\nمن قِبل شركة «Gotion GmbH» بشوراني';
+  await handler({ method: 'POST', headers: {}, body: { docType: 'cp_ar', modele: 'claude-sonnet-5-5', opts: { forme: true, fond: true, terminologie: true }, consignes: seed, text } }, res);
+  globalThis.fetch = saved;
+  assert.equal(sent.model, 'claude-sonnet-5-5');
+  const sugg = res.body.corrections.map(c => c.suggested);
+  assert.ok(!sugg.some(x => x.includes('[المدينة]')), 'emplacement à compléter écarté');
+  assert.equal(res.body.corrections.filter(c => c.original.startsWith('القطاع')).length, 1, 'un seul A-15');
+  assert.ok(sugg.includes('مجموعتي (Volkswagen) و(Gotion) يخص'));
+  assert.ok(res.body.warnings.some(w => w.kind === 'grille' && w.message.includes('Gotion GmbH')));
+});
