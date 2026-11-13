@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { nextThursday, computeDeadline, isThursday, formatLongFR, toISO, addDays, weekday } from "../lib/dates.js";
 import { holidayOn } from "../lib/feries.js";
 import { DELAI_AUDITION_LEGAL, DELAI_REPONSE_MIN } from "../lib/lettres.js";
@@ -26,6 +26,7 @@ const LOGO_CC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASsAAABRCAMAAAC9t
 import JSZip from "jszip";
 import { addComments, footnoteTexts, normalize as normTexte } from "./wordComments.js";
 import { controlesChiffres } from "./chiffres.js";
+import { detecterNoms, construireTable, pseudonymiser, restaurer, restaurerCorrection, restaurerObservation } from "./pseudonyme.js";
 
 // ── PALETTE ──
 const C = {
@@ -332,6 +333,14 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [notes, setNotes] = useState([]); // notes de bas de page du rapport
   const [cout, setCout] = useState(null);  // coût réel de l'analyse, en dollars
   const [modeleLangue, setModeleLangue] = useState("claude-sonnet-5-5");
+  // Rapports : noms des sociétés et des personnes remplacés par des codes avant l'envoi.
+  const [pseudoOn, setPseudoOn] = useState(true);
+  const [noms, setNoms] = useState([]);
+  const [ajoutsNoms, setAjoutsNoms] = useState("");
+  const [apercu, setApercu] = useState(false);
+  const texteRapport = cfg.rapport && fileContent ? (notes.length ? fileContent + "\n" + notes.flatMap(n => n.paras).join("\n") : fileContent) : "";
+  useEffect(() => { setNoms(texteRapport ? detecterNoms(texteRapport).entites : []); setAjoutsNoms(""); setApercu(false); }, [texteRapport]);
+  const tablePseudo = useMemo(() => (pseudoOn && texteRapport ? construireTable(texteRapport, noms, ajoutsNoms.split("\n").map(x => x.trim()).filter(Boolean)) : null), [pseudoOn, texteRapport, noms, ajoutsNoms]);
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -397,13 +406,17 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   // la cohérence sur le document entier, les deux en parallèle.
   const analyzeRapport = async text => {
     if (!optsR.langue && !optsR.coherence) { setError("Choisissez au moins une relecture."); return; }
+    const table = pseudoOn ? tablePseudo : null;
+    if (table && table.collision) { setError("Le rapport contient déjà des crochets du type [SOC_1] : la pseudonymisation ne peut pas être appliquée sans risque. Décochez-la ou retirez ces crochets."); return; }
+    // Seul le texte codé quitte le navigateur ; les noms sont remis au retour.
+    const coder = s => (table ? pseudonymiser(s, table) : s);
     setPhase("loading"); setError(""); setNotApplied([]); setWarnings([]); setStatuses({}); setObsStatus({}); setObservations([]); setGrille(null); setAppel(null); setCout(null);
     let coutLangue = 0;
     // Langue : corps puis notes de bas de page (texte brut, pour que les extraits se retrouvent).
     const texteLangue = notes.length ? text + "\n" + notes.flatMap(n => n.paras).join("\n") : text;
     // Cohérence : notes numérotées comme dans le document.
     const texteCoherence = notes.length ? text + "\n\nNOTES DE BAS DE PAGE :\n" + notes.map(n => `(${n.num || "?"}) ${n.text}`).join("\n") : text;
-    const parts = optsR.langue ? decouper(texteLangue) : [];
+    const parts = optsR.langue ? decouper(coder(texteLangue)) : [];
     let faits = 0;
     setProgress({ total: parts.length, faits: 0, coherence: optsR.coherence ? "en cours" : null });
     const avert = [];
@@ -416,7 +429,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
           const k = next++;
           let essai = 0;
           while (true) {
-            try { const d = await post("/api/analyze", { text: parts[k], docType: "rapport", opts: { forme: true }, consignes, modele: modeleLangue }); res[k] = d.corrections || []; if (d.appel && d.appel.cout) coutLangue += d.appel.cout; break; }
+            try { const d = await post("/api/analyze", { text: parts[k], docType: "rapport", opts: { forme: true }, consignes, modele: modeleLangue, pseudonyme: !!table }); res[k] = d.corrections || []; if (d.appel && d.appel.cout) coutLangue += d.appel.cout; break; }
             catch (e) { if (++essai >= 2) { res[k] = []; avert.push({ kind: "langue", message: `Partie ${k + 1} sur ${parts.length} non relue (${e.message}). Relancez l'analyse pour la reprendre.` }); break; } }
           }
           faits++; setProgress(p => ({ ...p, faits }));
@@ -428,11 +441,19 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       res.flat().forEach(c => { const key = c.original + "\u0000" + c.suggested; if (!vu.has(key)) { vu.add(key); out.push(c); } });
       return out;
     })();
-    const coherence = optsR.coherence ? post("/api/coherence", { text: texteCoherence })
+    const coherence = optsR.coherence ? post("/api/coherence", { text: coder(texteCoherence), pseudonyme: !!table })
       .then(d => { setProgress(p => ({ ...p, coherence: "terminée" })); return d; })
       .catch(e => { avert.push({ kind: "coherence", message: "Relecture de cohérence non effectuée : " + e.message }); setProgress(p => ({ ...p, coherence: "échec" })); return null; })
       : Promise.resolve(null);
-    const [corr, coh] = await Promise.all([langue, coherence]);
+    let [corr, coh] = await Promise.all([langue, coherence]);
+    if (table) {
+      // Retour aux vrais noms. Une correction qui touche à un nom codé (article ou
+      // élision devant le nom, code modifié) est écartée : elle serait fausse en clair.
+      const n0 = corr.length;
+      corr = corr.map(c => restaurerCorrection(c, table)).filter(Boolean);
+      if (corr.length < n0) avert.push({ kind: "pseudonymes", message: `${n0 - corr.length} correction(s) de langue écartée(s) : elles portaient sur un nom remplacé par un code (article ou élision devant le nom).` });
+      if (coh) coh = { ...coh, observations: (coh.observations || []).map(o => restaurerObservation(o, table)), synthese: restaurer(coh.synthese || "", table).texte };
+    }
     if (coh && coh.avertissement) avert.push({ kind: "coherence", message: coh.avertissement });
     // Contrôles chiffrés sans modèle (totaux des tableaux, même fait cité avec deux chiffres) :
     // ils priment sur une observation du modèle qui porte sur le même passage.
@@ -765,7 +786,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
       {cfg.rapport && (
         <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:8,fontSize:12,color:C.text,lineHeight:1.55}}>
-          Rapport confidentiel : son texte est transmis au modèle d'Anthropic pour la relecture. Déposez de préférence la version anonymisée produite par l'outil d'anonymisation.
+          Rapport confidentiel : avant l'envoi au modèle d'Anthropic, les noms des sociétés et des personnes sont remplacés par des codes dans votre navigateur, et remis en clair dans le résultat. Vérifiez la liste des noms remplacés avant de lancer l'analyse. Les chiffres, les dates et les autres mentions restent lisibles.
         </div>
       )}
 
@@ -867,6 +888,54 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 </div>
               </div>
             )}
+          </Card>
+          )}
+
+          {cfg.rapport && fileContent && (
+          <Card>
+            <SLabel>Noms remplacés avant l'envoi</SLabel>
+            <div onClick={() => setPseudoOn(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${pseudoOn?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:pseudoOn?"#f0f4ff":"#fff",marginBottom:8,transition:"all .15s"}}>
+              <div style={{width:15,height:15,border:`1.5px solid ${pseudoOn?C.navy2:C.border2}`,borderRadius:4,background:pseudoOn?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {pseudoOn && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:C.text}}>Remplacer les noms des sociétés et des personnes</div>
+                <div style={{fontSize:10,color:C.text3,marginTop:1}}>Le modèle ne voit que des codes ([SOC_1], [PERS_2]…) ; les vrais noms sont remis dans le rapport relu</div>
+              </div>
+            </div>
+            {pseudoOn && (<>
+              {[["SOC","Sociétés et groupes","Le nom distinctif est remplacé ; « SA », « Groupe », « Maroc »… restent lisibles."],["PERS","Personnes","Prénoms et noms."],["NOM","Autres noms propres repérés","Marques, lieux, concurrents cités dans les tableaux… Cochez ceux qui sont des sociétés ou des personnes."]].map(([type,titre,aide]) => {
+                const liste = noms.filter(e => e.type === type);
+                if (!liste.length) return null;
+                const coches = liste.filter(e => e.coche).length;
+                return (
+                  <div key={type} style={{marginBottom:8}}>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:3}}>
+                      <span style={{fontSize:11,fontWeight:500,color:C.text2}}>{titre} · {coches} sur {liste.length}</span>
+                      <span onClick={() => setNoms(ns => ns.map(e => e.type === type ? { ...e, coche: coches < liste.length } : e))} style={{fontSize:10,color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>{coches < liste.length ? "tout cocher" : "tout décocher"}</span>
+                    </div>
+                    <div style={{fontSize:10,color:C.text3,marginBottom:4}}>{aide}</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4,maxHeight:type === "NOM" ? 120 : 160,overflowY:"auto"}}>
+                      {liste.map(e => (
+                        <span key={e.cle} title={e.formes.map(f => `${f.forme} (${f.n})`).join(" · ")} onClick={() => setNoms(ns => ns.map(x => x.cle === e.cle ? { ...x, coche: !x.coche } : x))}
+                          style={{fontSize:10.5,padding:"2px 7px",borderRadius:12,cursor:"pointer",border:`1px solid ${e.coche?C.navy2:C.border2}`,background:e.coche?"#e6edff":"#fff",color:e.coche?C.navy2:C.text3,textDecoration:e.coche?"none":"line-through"}}>
+                          {e.libelle} <span style={{opacity:.6}}>{e.n}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{fontSize:10.5,fontWeight:500,color:C.text2,margin:"6px 0 3px"}}>Ajouter un nom oublié (un par ligne)</div>
+              <textarea value={ajoutsNoms} onChange={e => setAjoutsNoms(e.target.value)} rows={2} placeholder={"Ex. : Sothema\nnuméro de registre du commerce"} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:11.5,color:C.text,boxSizing:"border-box",resize:"vertical"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+                <span style={{fontSize:10,color:tablePseudo && tablePseudo.collision ? C.red : C.text3}}>{tablePseudo ? (tablePseudo.collision ? "Le rapport contient déjà des codes entre crochets : remplacement impossible." : `${tablePseudo.nombre} nom(s) remplacé(s)`) : ""}</span>
+                <span onClick={() => setApercu(v => !v)} style={{fontSize:10.5,color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>{apercu ? "Masquer le texte envoyé" : "Voir le texte envoyé"}</span>
+              </div>
+              {apercu && tablePseudo && (
+                <pre style={{marginTop:6,maxHeight:220,overflowY:"auto",whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:10.5,lineHeight:1.5,color:C.text2,background:C.cream2,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px"}}>{pseudonymiser(texteRapport.slice(0, 6000), tablePseudo)}{texteRapport.length > 6000 ? "\n…" : ""}</pre>
+              )}
+            </>)}
           </Card>
           )}
 

@@ -7,7 +7,7 @@
 
 import { requireAppPassword } from '../lib/auth.js';
 import { callStructured } from '../lib/anthropic.js';
-import { realignOriginal } from './analyze.js';
+import { realignOriginal, NOTE_PSEUDONYMES } from './analyze.js';
 
 export const config = { maxDuration: 300 };
 
@@ -73,12 +73,13 @@ export default async function handler(req, res) {
   if (!apiKey) return res.status(500).json({ error: 'Configuration serveur incomplète : ANTHROPIC_API_KEY manquante côté Vercel.' });
 
   const full = String((req.body || {}).text || '');
+  const pseudonyme = !!(req.body || {}).pseudonyme;
   if (!full.trim()) return res.status(400).json({ error: 'Texte manquant.' });
   const text = full.slice(0, MAX_CHARS);
   const tronque = full.length > MAX_CHARS;
 
   try {
-    const out = await callStructured({ apiKey, system: SYSTEM, user: `RAPPORT D'INSTRUCTION :\n${text}${tronque ? '\n...[fin tronquée]' : ''}`, tool: COHERENCE_TOOL, maxTokens: 12000 });
+    const out = await callStructured({ apiKey, system: SYSTEM, user: `${pseudonyme ? NOTE_PSEUDONYMES + "\nDans « observation », désigne les sociétés et les personnes par leurs codes, crochets compris. Deux codes différents désignent deux noms différents : c'est ainsi que tu repères deux prénoms différents pour une même personne.\n\n" : ''}RAPPORT D'INSTRUCTION :\n${text}${tronque ? '\n...[fin tronquée]' : ''}`, tool: COHERENCE_TOOL, maxTokens: 12000 });
     const observations = (Array.isArray(out.observations) ? out.observations : [])
       .filter(o => o && o.observation && o.extrait)
       .slice(0, MAX_OBS)

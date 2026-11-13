@@ -385,6 +385,10 @@ function canon(str) {
   flush();
   return { norm, map };
 }
+// Rapports pseudonymisés dans le navigateur : les noms arrivent sous forme de codes.
+export const NOTE_PSEUDONYMES = `NOMS CODÉS : pour la confidentialité, les noms de sociétés et de personnes ont été remplacés, avant l'envoi, par des codes entre crochets : [SOC_1] (société ou groupe), [PERS_2] (prénom ou nom d'une personne), [NOM_3] (autre nom). Un même code désigne toujours le même nom ; un code à double numéro ([SOC_1_2]) est une autre graphie du même nom (en majuscules, par exemple). Les mots génériques (SA, Groupe, Holding, Maroc…) sont restés en clair : « [SOC_1] SA » et « le groupe [SOC_1] » désignent la même société.
+Traite chaque code comme un nom propre que tu ne lis pas : recopie-le exactement, crochets compris, dans tes extraits ; ne corrige jamais l'élision ou l'article devant un code (« de [SOC_1] » reste tel quel) ; n'en déduis ni genre ni nombre ; ne propose aucune correction qui ajoute, retire ou modifie un code.`;
+
 export function realignOriginal(text, original) {
   if (!original || text.includes(original)) return original;
   const T = canon(text), O = canon(original).norm.trim();
@@ -436,6 +440,7 @@ export default async function handler(req, res) {
   const built = buildPrompt({ text, docType, opts: opts || {}, consignes });
   const system = built.system;
   let user = built.user;
+  if (docType === 'rapport' && body.pseudonyme) user = `${NOTE_PSEUDONYMES}\n\n${user}`;
   const destinataire = ['public', 'autre'].includes(body.destinataire) ? body.destinataire : undefined;
   if (docType === 'lettre_ar') {
     const cat = letterAddressee(text, destinataire).cat;
