@@ -110,3 +110,17 @@ La mise en place du contrat, au cours de l'exercice 2025, porte sur la route du 
   // Les mots d'une adresse remplacée ne sont pas proposés en plus.
   assert.ok(!entites.some(e => e.type === 'NOM' && /Sehraoui|Kermen/.test(e.libelle)));
 });
+
+test('titre tapé en minuscules et affiché en petites capitales : noms des parties remplacés', () => {
+  const run = (t, caps) => `<w:r>${caps ? '<w:rPr><w:smallCaps/></w:rPr>' : ''}<w:t xml:space="preserve">${t}</w:t></w:r>`;
+  const titre = 'acquisition de la société « foxtrot bidco » par « cvc capital partners plc »';
+  const corps = 'La société « Foxtrot Bidco » est détenue par la société « CVC Capital Partners plc ». Le total des ventes progresse.';
+  const documentXml = `<w:body><w:p>${run(titre, true)}</w:p><w:p>${run(corps, false)}</w:p></w:body>`;
+  const t = titre + '\n' + corps;
+  const { entites } = detecterNoms(t, { documentXml });
+  const table = construireTable(t, entites);
+  const p = pseudonymiser(t, table);
+  assert.ok(!/foxtrot|cvc/i.test(p), p);
+  assert.match(p, /le total des ventes/i); // mot courant non touché
+  assert.equal(restaurer(p, table).texte, t);
+});

@@ -107,14 +107,42 @@ function enDebut(text, i) {
   return false;
 }
 
+// Mots affichés en capitales par la mise en forme Word (petites capitales, majuscules)
+// alors qu'ils sont tapés en minuscules : titres de rapport, pages de garde.
+// Renvoie, pour chaque mot en minuscules, son nombre d'occurrences dans ces passages.
+export function motsEnCapitales(documentXml, stylesXml) {
+  const out = new Map();
+  if (!documentXml) return out;
+  const actif = x => /<w:(?:caps|smallCaps)\b(?![^>]*w:val="(?:false|0|off)")[^>]*\/>/.test(x || '');
+  const stylesCaps = new Set();
+  for (const m of String(stylesXml || '').matchAll(/<w:style\b[^>]*w:styleId="([^"]+)"[^>]*>([\s\S]*?)<\/w:style>/g)) if (actif((/<w:rPr>[\s\S]*?<\/w:rPr>/.exec(m[2]) || [''])[0])) stylesCaps.add(m[1]);
+  for (const p of documentXml.matchAll(/<w:p\b(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)) {
+    const pPr = (/<w:pPr>[\s\S]*?<\/w:pPr>/.exec(p[0]) || [''])[0];
+    const pCaps = stylesCaps.has((/<w:pStyle w:val="([^"]+)"/.exec(pPr) || [])[1]);
+    for (const r of p[0].matchAll(/<w:r\b(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/g)) {
+      const rPr = (/<w:rPr>[\s\S]*?<\/w:rPr>/.exec(r[1]) || [''])[0];
+      const explicite = /<w:(?:caps|smallCaps)\b/.test(rPr);
+      const caps = explicite ? actif(rPr) : (pCaps || stylesCaps.has((/<w:rStyle w:val="([^"]+)"/.exec(rPr) || [])[1]));
+      if (!caps) continue;
+      const t = [...r[1].matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map(m => m[1]).join('');
+      for (const w of t.match(RE_MOT) || []) if (w === w.toLowerCase()) out.set(w, (out.get(w) || 0) + 1);
+    }
+  }
+  return out;
+}
+
 /**
  * Repère les noms de sociétés et de personnes.
  * @returns {{entites: Array<{cle, type, libelle, formes:{forme:string,n:number}[], n:number, source:'ancre'|'personne'|'suggestion', coche:boolean, premier:number}>}}
  */
-export function detecterNoms(text, { documentXml = null } = {}) {
+export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}) {
   text = String(text || '');
   const occ = indexer(text);
-  const minuscules = new Set([...occ.keys()].filter(w => w === w.toLowerCase()));
+  // Un mot en minuscules affiché en capitales (titre en petites capitales) n'est pas un
+  // mot courant : « foxtrot » dans le titre est le nom « Foxtrot ».
+  const capitales = motsEnCapitales(documentXml, stylesXml);
+  const enCapitales = w => (capitales.get(w) || 0) >= (occ.get(w) || []).length;
+  const minuscules = new Set([...occ.keys()].filter(w => w === w.toLowerCase() && !enCapitales(w)));
   const ent = new Map(); // clé -> entité
   const ajouter = (mot, type, source) => {
     const cle = mot.toLowerCase();
@@ -273,14 +301,16 @@ export function detecterNoms(text, { documentXml = null } = {}) {
     if (e.phrase) {
       const vu = new Map();
       for (const m of text.matchAll(new RegExp(`(?<![${L}0-9_])${esc(e.phrase).replace(/ /g, '[ \\u00a0]+')}(?![${L}0-9_])`, 'giu'))) {
-        if (e.type === 'SOC' && m[0] === m[0].toLowerCase()) continue;
+        if (e.type === 'SOC' && m[0] === m[0].toLowerCase() && !(m[0].match(RE_MOT) || []).every(w => capitales.has(w))) continue;
         if (!vu.has(m[0])) vu.set(m[0], { forme: m[0], n: 0, premier: m.index });
         vu.get(m[0]).n++;
       }
       formes.push(...vu.values());
     } else for (const [w, pos] of occ) {
       if (w.toLowerCase() !== e.cle) continue;
-      const n = (w === w.toLowerCase()) ? pos.filter(i => dansAdresse(text, i, w.length)).length : pos.length;
+      // Forme en minuscules : retenue dans une adresse web ou électronique, ou si elle
+      // n'apparaît que dans des passages affichés en capitales.
+      const n = (w === w.toLowerCase()) ? (enCapitales(w) ? pos.length : pos.filter(i => dansAdresse(text, i, w.length)).length) : pos.length;
       if (n) formes.push({ forme: w, n, premier: pos[0] });
     }
     if (!formes.length) continue;

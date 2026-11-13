@@ -333,7 +333,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [observations, setObservations] = useState([]);
   const [obsStatus, setObsStatus] = useState({});
   const [notes, setNotes] = useState([]); // notes de bas de page du rapport
-  const [docXmlRapport, setDocXmlRapport] = useState(null); // document.xml du rapport (tableaux, pour repérer les sociétés)
+  const [docXmlRapport, setDocXmlRapport] = useState(null); // document.xml et styles.xml du rapport (tableaux, capitales)
   const [cout, setCout] = useState(null);  // coût réel de l'analyse, en dollars
   const [modeleLangue, setModeleLangue] = useState("claude-sonnet-5-5");
   // Rapports : noms des sociétés et des personnes remplacés par des codes avant l'envoi.
@@ -344,7 +344,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [tableAnalyse, setTableAnalyse] = useState(null); // codes utilisés lors de la dernière analyse
   const [controleFinal, setControleFinal] = useState(null); // contrôle du fichier Word relu
   const texteRapport = cfg.rapport && fileContent ? (notes.length ? fileContent + "\n" + notes.flatMap(n => n.paras).join("\n") : fileContent) : "";
-  useEffect(() => { setNoms(texteRapport ? detecterNoms(texteRapport, { documentXml: docXmlRapport }).entites : []); setAjoutsNoms(""); setApercu(false); }, [texteRapport, docXmlRapport]);
+  useEffect(() => { setNoms(texteRapport ? detecterNoms(texteRapport, docXmlRapport || {}).entites : []); setAjoutsNoms(""); setApercu(false); }, [texteRapport, docXmlRapport]);
   const tablePseudo = useMemo(() => (pseudoOn && texteRapport ? construireTable(texteRapport, noms, ajoutsNoms.split("\n").map(x => x.trim()).filter(Boolean)) : null), [pseudoOn, texteRapport, noms, ajoutsNoms]);
   const fileRef = useRef();
 
@@ -385,7 +385,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
         // Rapports : les notes de bas de page sont relues aussi (langue et cohérence).
         const fn = zip.file("word/footnotes.xml");
         setNotes(cfg.rapport && fn ? footnoteTexts(await fn.async("string"), docXml) : []);
-        setDocXmlRapport(cfg.rapport ? docXml : null);
+        setDocXmlRapport(cfg.rapport ? { documentXml: docXml, stylesXml: zip.file("word/styles.xml") ? await zip.file("word/styles.xml").async("string") : null } : null);
       } catch(e) {
         setError("Lecture du fichier impossible. Vérifiez qu'il s'agit bien d'un .docx valide.");
         setFileName(""); setFileBytes(null);
