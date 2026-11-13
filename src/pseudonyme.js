@@ -21,6 +21,13 @@ const L = 'A-Za-zÀ-ÖØ-öø-ÿŒœ';
 const RE_MOT = new RegExp(`[${L}]+`, 'g');
 const MAJ = /^[A-ZÀ-ÖØ-ÞŒ]/;
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Motif d'une dénomination en plusieurs mots : espaces ou traits d'union indifférents,
+// accents ignorés (« Avant-Scène », « Avant Scène », « AVANT SCENE »).
+const VARIANTES = { a: 'aàâä', c: 'cç', e: 'eéèêë', i: 'iîï', o: 'oôö', u: 'uùûü', y: 'yÿ' };
+const BASE = {}; for (const [b, v] of Object.entries(VARIANTES)) for (const ch of v) BASE[ch] = v;
+function motifSouple(p) {
+  return String(p).trim().split(/[\s\u00a0\-‑]+/).map(w => [...w].map(ch => { const v = BASE[ch.toLowerCase()]; return v ? `[${v}]` : esc(ch); }).join('')).join('[\\s\\u00a0\\-‑]+');
+}
 
 export const TYPES = { SOC: 'Sociétés et groupes', PERS: 'Personnes', ADR: 'Adresses', ID: "Numéros d'immatriculation", NOM: 'Autres noms cochés' };
 
@@ -41,6 +48,7 @@ const GENERIQUES = `groupe group groupes holding holdings corporation company co
   commerce commercial commerciale alimentaire alimentaires cosmétique cosmétiques promotion maghreb médical médicale medical santé beauté hygiène
   chimie chimique pharmacie pharmacies nationale national atlantique sud nord centre new nouvelle nouveaux import export
   bidco midco topco holdco newco finco propco acquisition acquisitions fund funds associates general partner investors investor
+  anonyme mondial mondiale digital digitale agency agence events event événements évènements communication media médias concept production productions
   us uk usa united kingdom states america american denmark danish netherlands dutch germany german spain spanish italy italian ireland irish
   switzerland swiss belgium luxembourg asia pacific emea mena worldwide world`;
 const INSTITUTIONS = `conseil concurrence commission permanente section ministère ministre ministres direction directeur directrice général générale généraux
@@ -56,7 +64,7 @@ const INSTITUTIONS = `conseil concurrence commission permanente section ministè
   janvier février mars avril mai juin juillet août septembre octobre novembre décembre
   japon chine inde espagne italie allemagne portugal belgique suisse luxembourg pays bas royaume uni uk usa états unis tunisie algérie égypte
   sénégal côte ivoire turquie émirats arabes arabie saoudite qatar canada brésil russie`;
-const PARTICULES = 'de du des d la le les l et el ben ibn bel ait aït van von di da del della der den y';
+const PARTICULES = 'de du des d la le les l et en el ben ibn bel ait aït van von di da del della der den y';
 const STOP = new Set(`${FORMES} ${GENERIQUES} ${INSTITUTIONS} ${PARTICULES}`.split(/\s+/).filter(Boolean));
 // Suggestions seulement : lieux et mots courants qui prennent souvent une majuscule
 // (titres de colonnes, débuts de ligne). Une dénomination qui les contient reste repérée.
@@ -70,6 +78,7 @@ const LIEUX = new Set(`afrique asie europe amérique océanie danemark angleterr
 const COURANTS = new Set(`pièce pièces suite street level stock partner pet animal world city french forfait forfaits régie plateforme organigramme
   schéma exercice montant activité activités secteur segment marché marchés produit ventes gamme gammes nature client clients fournisseur
   fournisseurs opérateur opérateurs part parts chiffre affaires importance catégorie catégories pays origine destination volume valeur`.split(/\s+/).filter(Boolean));
+const RE_PARTICULE_MIN = new RegExp(`^(?:${PARTICULES.split(' ').join('|')})$`);
 const SUFFIXES_FR = /(?:tions?|sions?|ments?|ités?|ages?|ances?|ences?|eurs?|euses?|iques?|ismes?|istes?|ées?|és?|ants?|antes?|aires?|oires?|ures?|ives?|ifs?|ibles?|ables?|eries?|iats?|ogies?|omies?|èmes?|aises?|elles?|ales|aux)$/;
 
 // Mots distinctifs d'une dénomination ou d'un nom de personne.
@@ -119,14 +128,16 @@ export function motsEnCapitales(documentXml, stylesXml) {
   for (const p of documentXml.matchAll(/<w:p\b(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)) {
     const pPr = (/<w:pPr>[\s\S]*?<\/w:pPr>/.exec(p[0]) || [''])[0];
     const pCaps = stylesCaps.has((/<w:pStyle w:val="([^"]+)"/.exec(pPr) || [])[1]);
+    // Les mots sont souvent coupés entre plusieurs passages (« mou » + « lay ») : on recolle
+    // les passages en capitales qui se suivent avant de découper en mots.
+    let texte = '';
     for (const r of p[0].matchAll(/<w:r\b(?:\s[^>]*)?>([\s\S]*?)<\/w:r>/g)) {
       const rPr = (/<w:rPr>[\s\S]*?<\/w:rPr>/.exec(r[1]) || [''])[0];
       const explicite = /<w:(?:caps|smallCaps)\b/.test(rPr);
       const caps = explicite ? actif(rPr) : (pCaps || stylesCaps.has((/<w:rStyle w:val="([^"]+)"/.exec(rPr) || [])[1]));
-      if (!caps) continue;
-      const t = [...r[1].matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map(m => m[1]).join('');
-      for (const w of t.match(RE_MOT) || []) if (w === w.toLowerCase()) out.set(w, (out.get(w) || 0) + 1);
+      texte += caps ? [...r[1].matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map(m => m[1]).join('') : ' ';
     }
+    for (const w of texte.match(RE_MOT) || []) if (w === w.toLowerCase()) out.set(w, (out.get(w) || 0) + 1);
   }
   return out;
 }
@@ -142,7 +153,8 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
   // mot courant : « foxtrot » dans le titre est le nom « Foxtrot ».
   const capitales = motsEnCapitales(documentXml, stylesXml);
   const enCapitales = w => (capitales.get(w) || 0) >= (occ.get(w) || []).length;
-  const minuscules = new Set([...occ.keys()].filter(w => w === w.toLowerCase() && !enCapitales(w)));
+  // (Une forme en minuscules qui n'apparaît que dans une adresse web, « www.maphar.ma », ne compte pas.)
+  const minuscules = new Set([...occ].filter(([w, pos]) => w === w.toLowerCase() && !enCapitales(w) && pos.some(i => !dansAdresse(text, i, w.length))).map(([w]) => w));
   const ent = new Map(); // clé -> entité
   const ajouter = (mot, type, source) => {
     const cle = mot.toLowerCase();
@@ -163,11 +175,25 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
   const ANCRES = ANCRES_MIN + '|' + ANCRES_MIN.split('|').map(a => a[0].toUpperCase() + a.slice(1)).join('|');
   // Dénomination entre guillemets : ses mots distinctifs ; à défaut (« Promotion Maghreb »,
   // nom fait de mots génériques), la dénomination entière, sans sa forme juridique.
+  // Un mot qui existe aussi en minuscules dans le texte (« En », « Avant », « Nouvelle ») est
+  // un mot courant : il n'est pas remplacé seul, sinon chaque « En outre » deviendrait un code.
+  const distinctifs = n => motsDistinctifs(n).filter(w => MAJ.test(w) && !minuscules.has(w.toLowerCase()));
+  const COMPOSE = new RegExp(`[A-ZÀ-ÖØ-ÞŒ][${L}]+(?:-[A-ZÀ-ÖØ-Þa-zà-ÿ][${L}]+)+`, 'gu');
   const denomination = n => {
-    const mots = motsDistinctifs(n).filter(w => MAJ.test(w));
-    if (mots.length) return mots.forEach(w => ajouter(w, 'SOC', 'ancre'));
-    const p = String(n).replace(new RegExp(`[ \u00a0,]+(?:${FORMES.split(' ').join('|')})\\.?$`, 'i'), '').replace(/^(?:la|le|les|l['’])\s*/i, '').trim();
-    if (p.length >= 4 && MAJ.test(p) && /\s/.test(p)) { const cle = 'phrase:' + p.toLowerCase(); if (!ent.has(cle)) ent.set(cle, { cle, type: 'SOC', source: 'ancre', phrase: p }); }
+    // Nom composé avec trait d'union (« Avant-Scène ») : remplacé en entier, ses mots
+    // ne sont pas remplacés isolément (« avant » reste un mot courant).
+    const composes = (String(n).match(COMPOSE) || []).filter(c => !(c.match(RE_MOT) || []).every(w => STOP.has(w.toLowerCase())));
+    composes.forEach(c => { const cle = 'phrase:' + c.toLowerCase(); if (!ent.has(cle)) ent.set(cle, { cle, type: 'SOC', source: 'ancre', phrase: c }); });
+    const reste = composes.reduce((x, c) => x.replace(c, ' '), String(n));
+    const mots = distinctifs(reste);
+    if (mots.length || composes.length) return mots.forEach(w => ajouter(w, 'SOC', 'ancre'));
+    // Dénomination faite de mots courants : on la remplace en entier, ou seulement son
+    // nom composé (« La Nouvelle Société Avant-Scène SA » -> « Avant-Scène »).
+    let p = String(n).replace(new RegExp(`[ \u00a0,]+(?:${FORMES.split(' ').join('|')})\\.?$`, 'i'), '').replace(/^(?:la|le|les|l['’])\s*/i, '').trim();
+    const compose = p.match(new RegExp(`[A-ZÀ-ÖØ-ÞŒ][${L}]+(?:-[A-ZÀ-ÖØ-Þa-zà-ÿ][${L}]+)+`, 'u'));
+    if (compose) p = compose[0];
+    else if (!/\s/.test(p) || !(p.match(RE_MOT) || []).every(w => MAJ.test(w) || RE_PARTICULE_MIN.test(w))) return;
+    if (p.length >= 4 && MAJ.test(p)) { const cle = 'phrase:' + p.toLowerCase(); if (!ent.has(cle)) ent.set(cle, { cle, type: 'SOC', source: 'ancre', phrase: p }); }
   };
   const reAncreG = new RegExp(`(?:^|[^${L}])(?:${ANCRES})[ \\u00a0]*«[ \\u00a0]*([^»\\n]{1,80}?)[ \\u00a0]*»((?:[ \\u00a0]*(?:,|et|ou)[ \\u00a0]*«[ \\u00a0]*[^»\\n]{1,80}?[ \\u00a0]*»)*)`, 'giu');
   for (const m of text.matchAll(reAncreG)) {
@@ -179,7 +205,7 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
   for (const m of text.matchAll(reGuillAncre)) denomination(m[1]);
   const motMaj = `[A-ZÀ-ÖØ-ÞŒ][${L}'’&.-]*`;
   const reAncreN = new RegExp(`(?:^|[^${L}])(?:${ANCRES})[ \\u00a0]+(${motMaj}(?:[ \\u00a0]+(?:(?:&|et|de|du|des|e|y|und|and|of|di|del|della|van|von|der|für|for)[ \\u00a0]+)?${motMaj}){0,4})`, 'gu');
-  for (const m of text.matchAll(reAncreN)) motsDistinctifs(m[1]).forEach(w => { if (MAJ.test(w)) ajouter(w, 'SOC', 'ancre'); });
+  for (const m of text.matchAll(reAncreN)) distinctifs(m[1]).forEach(w => ajouter(w, 'SOC', 'ancre'));
 
   // 3. Dénominations suivies d'une forme juridique : « Somapharma SARL », « CFAO Motors Maroc S.A. ».
   const reForme = new RegExp(`((?:${motMaj}[ \\u00a0]+(?:(?:&|et|de|du|des|e|y|und|and|of|di|del|della|van|von|der|für|for)[ \\u00a0]+)?){1,5})(?:S\\.?A\\.?S\\.?U?|S\\.?A\\.?R\\.?L\\.?(?:[ \\u00a0]?A\\.?U\\.?)?|SARLAU|S\\.A\\.|SA|SCA|SCSp|SCSP|SCS|SNC|GmbH|KG|Ltd|Limited|LLC|LLP|L\\.?P\\.|LP|Inc|Corporation|Corp|PLC|Plc|AG|ApS|A\\/S|AB|Oy|B\\.?V\\.?|N\\.?V\\.?|S\\.p\\.A\\.|SpA|S\\.r\\.l\\.|Srl|S\\.?à[ \\u00a0]?r\\.?l\\.?|Sàrl|Pte|Pty|Ltda)(?![${L}])`, 'gu');
@@ -300,7 +326,7 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
     const formes = [];
     if (e.phrase) {
       const vu = new Map();
-      for (const m of text.matchAll(new RegExp(`(?<![${L}0-9_])${esc(e.phrase).replace(/ /g, '[ \\u00a0]+')}(?![${L}0-9_])`, 'giu'))) {
+      for (const m of text.matchAll(new RegExp(`(?<![${L}0-9_])${motifSouple(e.phrase)}(?![${L}0-9_])`, 'giu'))) {
         if (e.type === 'SOC' && m[0] === m[0].toLowerCase() && !(m[0].match(RE_MOT) || []).every(w => capitales.has(w))) continue;
         if (!vu.has(m[0])) vu.set(m[0], { forme: m[0], n: 0, premier: m.index });
         vu.get(m[0]).n++;
@@ -315,8 +341,8 @@ export function detecterNoms(text, { documentXml = null, stylesXml = null } = {}
     }
     if (!formes.length) continue;
     // Forme de référence : la plus fréquente ; à égalité, la graphie courante plutôt que les majuscules d'un titre.
-    const capitales = f => (f.forme === f.forme.toUpperCase() && f.forme.length > 3 ? 1 : 0);
-    formes.sort((a, b) => b.n - a.n || capitales(a) - capitales(b) || a.premier - b.premier);
+    const toutMaj = f => (f.forme === f.forme.toUpperCase() && f.forme.length > 3 ? 1 : 0);
+    formes.sort((a, b) => b.n - a.n || toutMaj(a) - toutMaj(b) || a.premier - b.premier);
     entites.push({ cle: e.cle, type: e.type, libelle: formes[0].forme, formes: formes.map(({ forme, n }) => ({ forme, n })), n: formes.reduce((s, f) => s + f.n, 0), source: e.source, coche: e.source !== 'suggestion', premier: Math.min(...formes.map(f => f.premier)) });
   }
   const ordreType = { SOC: 0, PERS: 1, ADR: 2, ID: 3, NOM: 4 };
@@ -372,8 +398,10 @@ export function pseudonymiser(text, table) {
   text = String(text || '');
   if (!table || !table.paires.length) return text;
   const vers = new Map(table.paires);
-  const formes = [...vers.keys()].sort((a, b) => b.length - a.length).map(esc);
-  const re = new RegExp(`(?<![${L}0-9_])(?:${formes.join('|')})(?![${L}0-9_])`, 'gu');
+  // Un nom peut être suivi d'un chiffre collé (numéro de page d'une ligne de sommaire :
+  // « Alami5 ») ; un numéro, lui, ne doit pas être pris dans un nombre plus long.
+  const formes = [...vers.keys()].sort((a, b) => b.length - a.length).map(f => esc(f) + (/\d$/.test(f) ? `(?![${L}0-9_])` : `(?![${L}_])`));
+  const re = new RegExp(`(?<![${L}0-9_])(?:${formes.join('|')})`, 'gu');
   return text.replace(re, m => `[${vers.get(m)}]`);
 }
 

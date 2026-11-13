@@ -124,3 +124,17 @@ test('titre tapé en minuscules et affiché en petites capitales : noms des part
   assert.match(p, /le total des ventes/i); // mot courant non touché
   assert.equal(restaurer(p, table).texte, t);
 });
+
+test('mots courants des dénominations laissés, nom composé remplacé en entier, nom collé à un numéro de page', () => {
+  const t = `La société « La Nouvelle Société Avant-Scène SA » détient l'entreprise Chellah En Scène SARLAU.
+En outre, la société Avant-Scène est présidée par M. Moulay Ahmed Alami. Avant la réalisation de l'opération, rien ne change.
+2.L'associé historique : Monsieur Moulay Ahmed Alami5`;
+  const { entites } = detecterNoms(t);
+  const table = construireTable(t, entites);
+  const p = pseudonymiser(t, table);
+  assert.match(p, /\nEn outre, la société \[SOC_\d+\] est/);           // « En » reste
+  assert.match(p, /\. Avant la réalisation/);                          // « Avant » reste
+  assert.match(p, /Nouvelle Société \[SOC_\d+\] SA/);                   // « Avant-Scène » remplacé en entier
+  assert.ok(!/Alami|Moulay|Chellah/.test(p), p);                       // y compris « Alami5 » du sommaire
+  assert.equal(restaurer(p, table).texte, t);
+});

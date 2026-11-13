@@ -447,7 +447,9 @@ export const REGLES_RAPPORT = [
     regex: [
       { find: '\\b(loi n°) ?(\\d{1,3})\\.(\\d{2})\\b(?!\\.\\d)', replace: '$1 $2-$3', flags: 'g', label: 'loi n° 104.12 -> 104-12' },
       { find: '\\b(décret n°) ?(\\d)\\.(\\d{2})\\.(\\d{2,3})\\b', replace: '$1 $2-$3-$4', flags: 'g', label: 'décret n° 2.14.652 -> 2-14-652' },
-      { find: '\\b(loi|décret) n°(?=\\d)', replace: '$1 n° ', flags: 'g', label: 'espace après n°' },
+      // Le chiffre qui suit fait partie de l'extrait (sinon la correction se poserait aussi là
+      // où l'espace existe déjà) ; les numéros à points sont traités par les deux règles ci-dessus.
+      { find: '\\b(loi|décret) n°(?!\\d{1,3}\\.\\d{2}(?!\\d)|\\d\\.\\d{2}\\.\\d)(\\d)', replace: '$1 n° $2', flags: 'g', label: 'espace après n°' },
     ] },
   { code: 'R-02', doctype: 'rapport', category: 'FORME', mode: 'regex', active: true, label: 'Tournure impersonnelle', text: "« il sera procédé » et non « sera procédé ».",
     regex: [{ find: '(?<![Ii]l )\\bsera procédé(?![a-zà-ÿ])', replace: 'il sera procédé', flags: 'g', label: 'sera procédé -> il sera procédé' }] },

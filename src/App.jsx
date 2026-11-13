@@ -654,8 +654,11 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       // procédé », « de de ») n'est pas posée ici (l'extrait se retrouve ailleurs).
       const fen = (t, a, b) => t.slice(Math.max(0, a - 25), b + 25);
       const doublon = t => { const r = /(?:^|[^\p{L}])(\p{L}+)[\s\u00a0]+\1(?![\p{L}])/giu; const out = new Set(); let x; while ((x = r.exec(t))) out.add(x[1].toLowerCase()); return out; };
-      const avantD = doublon(fen(combined, ps, pe)), apresD = doublon(fen(combined.slice(0, ps) + suggested + combined.slice(pe), ps, ps + suggested.length));
+      const apresTxt = combined.slice(0, ps) + suggested + combined.slice(pe);
+      const avantD = doublon(fen(combined, ps, pe)), apresD = doublon(fen(apresTxt, ps, ps + suggested.length));
       if ([...apresD].some(w => !avantD.has(w))) continue;
+      // De même pour une double espace que la correction créerait (espace déjà présente après l'extrait).
+      if (/[ \u00a0]{2}/.test(fen(apresTxt, ps, ps + suggested.length)) && !/[ \u00a0]{2}/.test(fen(combined, ps, pe))) continue;
       const isls = diffIslands(rawO, suggested).map(isl => {
         const a = ps + isl.start;
         return { a, b: a + isl.del.length, ins: isl.ins };
@@ -680,9 +683,15 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     //    la plus large d'abord ; on garde les plages disjointes.
     located.sort((x, y) => (x.ps - y.ps) || ((y.pe - y.ps) - (x.pe - x.ps)));
     const kept = [];
+    // Deux corrections dont les extraits se chevauchent mais dont les changements ne se
+    // touchent pas (« le seuil réglementaire de lien fixé » / « fixé à 400 millions de
+    // dirhams). ») sont posées toutes les deux ; sinon la plus large l'emporte.
+    const memeIlot = (x, y) => x.a === y.a && x.b === y.b && x.ins === y.ins;
+    const conflit = (x, y) => !memeIlot(x, y) && (x.a < y.b && y.a < x.b || x.a === y.a || (x.a === x.b && x.a > y.a && x.a < y.b) || (y.a === y.b && y.a > x.a && y.a < x.b));
     for (const c of located) {
       const overlaps = kept.some(k => c.ps < k.pe && c.pe > k.ps);
-      if (!overlaps) { kept.push(c); if (appliedFlags) appliedFlags[c.ci] = true; }
+      const compatible = overlaps && c.isls.length && c.isls.some(it => !kept.some(k => k.isls.some(ki => memeIlot(it, ki)))) && !c.isls.some(it => kept.some(k => k.isls.some(ki => conflit(it, ki))));
+      if (!overlaps || compatible) { kept.push(c); if (appliedFlags) appliedFlags[c.ci] = true; }
       else c.overlapped = true;
     }
 
