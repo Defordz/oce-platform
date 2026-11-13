@@ -303,6 +303,37 @@ function harmonizeWithRules(claudeCorr, docType, consignes) {
 
 // Fusionne regex (en premier, car garanties) puis Claude, en retirant les
 // doublons exacts. Les chevauchements de plage sont geres en aval par le moteur.
+// Le modèle recopie parfois un extrait avec les signes diacritiques arabes dans
+// un autre ordre que le document (kasra puis shadda au lieu de shadda puis
+// kasra) ou avec des espaces différentes : l'extrait est alors introuvable dans
+// le fichier Word et la correction ne s'applique pas. On le réaligne sur le
+// passage exact du document.
+const MARK = /[ً-ٰٟ]/;
+const WS = /[ \t   ]/;
+function canon(str) {
+  let norm = '', map = [], run = [];
+  const flush = () => { run.sort((x, y) => (x.ch < y.ch ? -1 : x.ch > y.ch ? 1 : 0)).forEach(r => { norm += r.ch; map.push(r.i); }); run = []; };
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (MARK.test(ch)) { run.push({ ch, i }); continue; }
+    flush();
+    if (WS.test(ch)) { if (norm.endsWith(' ') && map.length && WS.test(str[map[map.length - 1]] || '')) continue; norm += ' '; map.push(i); }
+    else { norm += ch; map.push(i); }
+  }
+  flush();
+  return { norm, map };
+}
+export function realignOriginal(text, original) {
+  if (!original || text.includes(original)) return original;
+  const T = canon(text), O = canon(original).norm.trim();
+  const k = O ? T.norm.indexOf(O) : -1;
+  if (k < 0) return original;
+  const start = T.map[k], last = T.map[k + O.length - 1];
+  let end = last + 1;
+  while (end < text.length && MARK.test(text[end])) end++;
+  return text.slice(start, end);
+}
+
 function mergeDedup(regexCorr, claudeCorr) {
   const norm = s => String(s || '')
     .replace(/[\u00a0\s]+/g, ' ')
@@ -375,7 +406,9 @@ export default async function handler(req, res) {
       const a = span(c.original), b = span(d.original);
       return !!(a && b && a[0] < b[1] && b[0] < a[1]);
     });
-    const claudeCorr = harmonizeWithRules((parsed.corrections || []).concat(verifCorr.filter((_, k) => !proto.merged.has(k))), docType, consignes)
+    const realigned = (parsed.corrections || []).concat(verifCorr.filter((_, k) => !proto.merged.has(k)))
+      .map(c => { const o = c && realignOriginal(text, c.original); return o && o !== c.original ? { ...c, original: o } : c; });
+    const claudeCorr = harmonizeWithRules(realigned, docType, consignes)
       .filter(c => !touchesExclusive(c)).map(aligne).filter(c => c.suggested.replace(/\s+/g, ' ').trim() !== c.original.replace(/\s+/g, ' ').trim());
     // Décisions : le bloc des signatures (après « تم التداول ») n'est jamais retouché.
     let kept = claudeCorr;

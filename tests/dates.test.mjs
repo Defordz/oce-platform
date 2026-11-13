@@ -34,3 +34,16 @@ test('une suggestion du modèle sur la date est écartée au profit de la date s
   globalThis.fetch = saved;
   assert.deepEqual(res.body.corrections.map(c => c.suggested), ['soit le 30 novembre 2026']);
 });
+
+// Extrait recopié par le modèle avec les diacritiques dans un autre ordre
+// (kasra puis shadda) : réaligné sur le passage exact du document.
+test('réalignement des extraits arabes', async () => {
+  const { realignOriginal } = await import('../api/analyze.js');
+  const doc = "انطلاقًا من المادة الفعالة للكاثود (CAM) ستُورِّدُها جزئيًا لدى  ''الشركة المشتركة المغربية''.";
+  const modele = "ستُورِّدُها جزئيًا لدى ''الشركة المشتركة المغربية''".replace('ِّ', 'ِّ');
+  assert.ok(!doc.includes(modele));
+  const r = realignOriginal(doc, modele);
+  assert.ok(doc.includes(r));
+  assert.ok(r.startsWith('ستُورِّدُها') && r.endsWith("المغربية''"));
+  assert.equal(realignOriginal(doc, 'absent'), 'absent');
+});
