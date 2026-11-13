@@ -27,6 +27,8 @@ import JSZip from "jszip";
 import { addComments, footnoteTexts, normalize as normTexte } from "./wordComments.js";
 import { controlesChiffres } from "./chiffres.js";
 import { detecterNoms, construireTable, pseudonymiser, restaurer, restaurerCorrection, restaurerObservation } from "./pseudonyme.js";
+import { verifierFichierFinal } from "./integrite.js";
+import { controleRenvois } from "./renvois.js";
 
 // ── PALETTE ──
 const C = {
@@ -267,7 +269,7 @@ const CORRECTION_VARIANTS = {
   },
   rapport: {
     title: "Corriger les rapports d'instruction",
-    sub: "Langue en suivi des modifications · Contradictions et chiffres en commentaires Word",
+    sub: "Langue en suivi des modifications · Cohérence, renvois et omissions en commentaires Word",
     docTypes: [["rapport","Rapport d'instruction","En français"]],
     defaultType: "rapport",
     allowDemo: false,
@@ -290,7 +292,7 @@ function decouper(text, max = RAPPORT_PARTIE) {
 }
 const NOMS_MODELES = { "claude-haiku-5-5": "Haiku 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "claude-opus-5-5": "Opus 5.5" };
 const dollars = v => (v == null ? "?" : v.toLocaleString("fr-FR", { minimumFractionDigits: v < 0.1 ? 3 : 2, maximumFractionDigits: v < 0.1 ? 3 : 2 }) + " $");
-const CAT_OBS = {contradiction:"Contradiction",chiffres:"Chiffres",dates:"Dates",denominations:"Dénominations",qualification:"Qualification",conclusion:"Conclusion",renvois:"Renvois",autre:"Observation"};
+const CAT_OBS = {contradiction:"Contradiction",chiffres:"Chiffres",renvoi:"Renvoi",omission:"Omission",dates:"Dates",denominations:"Dénominations",qualification:"Qualification",conclusion:"Conclusion",renvois:"Renvois",autre:"Observation"};
 
 function CorrectionPage({consignes, history, setHistory, variant}) {
   const cfg = CORRECTION_VARIANTS[variant] || CORRECTION_VARIANTS.communique;
@@ -338,6 +340,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [noms, setNoms] = useState([]);
   const [ajoutsNoms, setAjoutsNoms] = useState("");
   const [apercu, setApercu] = useState(false);
+  const [tableAnalyse, setTableAnalyse] = useState(null); // codes utilisés lors de la dernière analyse
+  const [controleFinal, setControleFinal] = useState(null); // contrôle du fichier Word relu
   const texteRapport = cfg.rapport && fileContent ? (notes.length ? fileContent + "\n" + notes.flatMap(n => n.paras).join("\n") : fileContent) : "";
   useEffect(() => { setNoms(texteRapport ? detecterNoms(texteRapport).entites : []); setAjoutsNoms(""); setApercu(false); }, [texteRapport]);
   const tablePseudo = useMemo(() => (pseudoOn && texteRapport ? construireTable(texteRapport, noms, ajoutsNoms.split("\n").map(x => x.trim()).filter(Boolean)) : null), [pseudoOn, texteRapport, noms, ajoutsNoms]);
@@ -410,6 +414,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     if (table && table.collision) { setError("Le rapport contient déjà des crochets du type [SOC_1] : la pseudonymisation ne peut pas être appliquée sans risque. Décochez-la ou retirez ces crochets."); return; }
     // Seul le texte codé quitte le navigateur ; les noms sont remis au retour.
     const coder = s => (table ? pseudonymiser(s, table) : s);
+    setTableAnalyse(table); setControleFinal(null);
     setPhase("loading"); setError(""); setNotApplied([]); setWarnings([]); setStatuses({}); setObsStatus({}); setObservations([]); setGrille(null); setAppel(null); setCout(null);
     let coutLangue = 0;
     // Langue : corps puis notes de bas de page (texte brut, pour que les extraits se retrouvent).
@@ -461,8 +466,11 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     if (optsR.coherence && fileBytes) {
       try {
         const z = await JSZip.loadAsync(fileBytes);
-        regles = controlesChiffres({ documentXml: await z.file("word/document.xml").async("string"), text: texteLangue });
-      } catch (e) { avert.push({ kind: "chiffres", message: "Contrôles chiffrés non effectués : " + e.message }); }
+        const documentXml = await z.file("word/document.xml").async("string");
+        const stylesXml = z.file("word/styles.xml") ? await z.file("word/styles.xml").async("string") : null;
+        // Contrôles sans modèle : chiffres (totaux, même fait, noms) et renvois (sommaire, numérotation des tableaux).
+        regles = controlesChiffres({ documentXml, text: texteLangue }).concat(controleRenvois({ text: texteLangue, documentXml, stylesXml }));
+      } catch (e) { avert.push({ kind: "chiffres", message: "Contrôles automatiques (chiffres, renvois) non effectués : " + e.message }); }
     }
     const grandsNombres = t => new Set((String(t).replace(/(\d)[ \u00a0\u202f](?=\d{3})/g, "$1").match(/\d{5,}/g) || []));
     const recoupe = o => regles.some(r => {
@@ -708,7 +716,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     if (!fileBytes) { setError("Chargez un fichier .docx pour utiliser cette fonctionnalité."); return; }
 
     try {
-      setNotApplied([]);
+      setNotApplied([]); setControleFinal(null);
       const zip = await JSZip.loadAsync(fileBytes);
       const docXml = await zip.file("word/document.xml").async("string");
       const date = new Date().toISOString().split(".")[0] + "Z";
@@ -725,12 +733,14 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
       // Rapports : les corrections de langue s'appliquent aussi aux notes de bas de page.
       let notesXml = zip.file("word/footnotes.xml") ? await zip.file("word/footnotes.xml").async("string") : null;
+      const notesAvant = notesXml;
       if (cfg.rapport && notesXml) {
         notesXml = notesXml.replace(/(<w:p\b[\s\S]*?<\/w:p>)/g, para => applyTrackChangesToPara(para, correctionsList, appliedFlags, changeId, date));
         zip.file("word/footnotes.xml", notesXml);
       }
 
       // Observations de cohérence : commentaires Word ancrés sur le paragraphe cité.
+      let docFinal = result, commentsFinal = null, nonLocalises = 0;
       if (obsGardees.length) {
         const lire = async n => (zip.file(n) ? await zip.file(n).async("string") : null);
         const out = addComments({
@@ -747,9 +757,16 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
         });
         zip.file("word/document.xml", out.documentXml);
         zip.file("word/comments.xml", out.commentsXml);
+        docFinal = out.documentXml; commentsFinal = out.commentsXml; nonLocalises = out.nonLocalises;
         zip.file("word/_rels/document.xml.rels", out.relsXml);
         zip.file("[Content_Types].xml", out.contentTypesXml);
       }
+      // Rapports : contrôle du fichier relu contre l'original (texte intact, noms remis, aucun code restant).
+      if (cfg.rapport) setControleFinal(verifierFichierFinal({
+        docAvant: docXml, docApres: docFinal, notesAvant, notesApres: notesXml, commentsApres: commentsFinal, table: tableAnalyse,
+        corrections: { retenues: accepted.length, appliquees: appliedFlags.filter(Boolean).length },
+        commentaires: obsGardees.length ? { total: obsGardees.length, nonLocalises } : null,
+      }));
       const blob = await zip.generateAsync({
         type: "blob",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -941,7 +958,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
           <Card>
             <SLabel>{cfg.rapport ? "Relectures" : "Options de correction"}</SLabel>
-            {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications"],["coherence","Contradictions et chiffres","Contradictions majeures de faits, erreurs de chiffres · commentaires Word"]].map(([k,label,sub]) => (
+            {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications"],["coherence","Cohérence","Contradictions de faits, erreurs de chiffres, renvois, omissions importantes · commentaires Word"]].map(([k,label,sub]) => (
               <div key={k} onClick={() => setOptsR(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${optsR[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:optsR[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
                 <div style={{width:15,height:15,border:`1.5px solid ${optsR[k]?C.navy2:C.border2}`,borderRadius:4,background:optsR[k]?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {optsR[k] && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
@@ -1084,7 +1101,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
               {cfg.rapport && observations.length > 0 && (
               <Card>
-                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:4}}>Contradictions et chiffres ({observations.length})</div>
+                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:4}}>Observations de cohérence ({observations.length})</div>
                 <div style={{fontSize:10.5,color:C.text3,marginBottom:9}}>Chaque observation gardée devient un commentaire dans la marge du fichier Word, sur le paragraphe cité. Le texte n'est pas modifié.</div>
                 {observations.map((o,i) => {
                   const st = obsStatus[i];
@@ -1146,6 +1163,18 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
               <button onClick={downloadWord} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
                 <span>📥</span> {cfg.rapport ? "Télécharger le rapport relu (.docx)" : "Télécharger Word (.docx) avec corrections"}
               </button>
+
+              {cfg.rapport && controleFinal && (
+                <Card style={{borderLeft:`3px solid ${controleFinal.ok ? C.green : C.red}`}}>
+                  <div style={{fontSize:12.5,fontWeight:600,color:controleFinal.ok ? C.green : C.red,marginBottom:6}}>{controleFinal.ok ? "✓ Fichier relu vérifié" : "⚠️ Fichier relu : points à vérifier"}</div>
+                  {controleFinal.controles.map((c, i) => (
+                    <div key={i} style={{fontSize:11,color:C.text2,lineHeight:1.5,marginBottom:3}}>
+                      <span style={{color:c.ok ? C.green : C.red,marginRight:5}}>{c.ok ? "✓" : "✗"}</span>{c.libelle}
+                      {c.detail && <div style={{fontSize:10.5,color:C.text3,margin:"2px 0 0 16px"}}>{c.detail}</div>}
+                    </div>
+                  ))}
+                </Card>
+              )}
 
               {notApplied.length > 0 && (
                 <Card style={{borderLeft:`3px solid ${C.amber}`,background:C.amberLight}}>
