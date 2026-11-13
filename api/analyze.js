@@ -21,6 +21,7 @@ const TYPE_LABELS = {
   lettre_ar: 'lettre du Conseil en arabe (مراسلة)',
   lettre_fr: 'lettre du Conseil en français',
   bilingue: 'document bilingue',
+  rapport: "extrait d'un rapport d'instruction (FR ou AR)",
 };
 const isLetter = t => /^lettre_/.test(String(t || ''));
 
@@ -32,6 +33,7 @@ function appliesTo(c, docType) {
   if (!c) return false;
   if (c.doctype === docType || c.doctype === 'tous') return true;
   if (isLetter(docType)) return c.doctype === 'lettres';
+  if (docType === 'rapport') return false;
   return c.doctype === 'bilingue';
 }
 const SCOPE_LABELS = {
@@ -168,7 +170,18 @@ ${termC}
 - DISPOSITIF : « قرر ما يلي: », « المادة الأولى », « المادة الثانية ».
 - DÉLIBÉRATION : « تم التداول بشأن هذا القرار … », puis les signatures.
 Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`;
-  const structure = docType === 'decision_ar' ? structureDecision : isLetter(docType) ? `REPÈRES DE STRUCTURE D'UNE LETTRE (pour le périmètre des consignes) :
+  const structureRapport = `CE QUE TU CORRIGES : un EXTRAIT d'un rapport d'instruction (le rapport est découpé en parties relues séparément). Corrige UNIQUEMENT la langue :
+- orthographe, lettres manquantes ou en trop, mots collés ou coupés ;
+- grammaire : accords (genre, nombre, participes), conjugaison, prépositions, articles ;
+- syntaxe : mot manquant ou répété, phrase incomplète ou bancale (corrige le minimum pour la rendre correcte) ;
+- ponctuation et typographie (espaces, majuscules, guillemets, parenthèses).
+CE QUE TU NE TOUCHES PAS :
+- le raisonnement, le style et le vocabulaire technique : ne reformule jamais une phrase correcte ;
+- les chiffres, montants, pourcentages, dates, dénominations sociales, noms de personnes, intitulés de marchés ;
+- les citations entre guillemets et les extraits de textes juridiques ;
+- la structure du document : l'extrait commence ou finit parfois au milieu d'une section, ce n'est pas une erreur.
+Une contradiction ou une incohérence entre passages n'est pas de ton ressort ici : une autre relecture s'en charge.`;
+  const structure = docType === 'rapport' ? structureRapport : docType === 'decision_ar' ? structureDecision : isLetter(docType) ? `REPÈRES DE STRUCTURE D'UNE LETTRE (pour le périmètre des consignes) :
 - DESTINATAIRE : qualité, entité et ville du destinataire, en tête de lettre (« الفاضل المحترم / السيد وزير … / - الرباط - » ; « À l'attention de Maître … »).
 - RUBRIQUES : « الموضوع » / « المرجع » / « المرفقات » (« Objet » / « Référence » / « P.J. »).
 - OUVERTURE : « سلام تام بوجود مولانا الإمام، » puis « وبعد، » (lettre arabe) ; l'appel (« Maître, », « Madame la Ministre, ») dans une lettre française.
@@ -179,7 +192,9 @@ Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`
 - RUBRIQUES DU TABLEAU : « Noms des entreprises et groupes concernés », « L'acquéreur », « La cible », « Nature de l'opération », « Secteurs économiques concernés », « Délai… », et leurs équivalents arabes.
 - RÉSUMÉ NON CONFIDENTIEL : de « RÉSUMÉ NON CONFIDENTIEL DE L'OPÉRATION FOURNI PAR LES PARTIES » (« ملخص غير سري للعملية مسلم من قبل الأطراف ») jusqu'à « Fait à Rabat » (« حرر في الرباط »).
 Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`;
-  const datesRule = isLetter(docType)
+  const datesRule = docType === 'rapport'
+    ? `- Les dates, chiffres et montants ne se corrigent pas ici : seule leur typographie (espaces, ponctuation) peut l'être.`
+    : isLetter(docType)
     ? `- Les DATES de la lettre (jour de la semaine, jours fériés, délai de convocation, délai de réponse, chronologie des courriers et décisions cités) sont contrôlées automatiquement par ailleurs : ne propose AUCUNE correction portant sur une date.
 - Les dénominations officielles des entités et les qualités des destinataires sont vérifiées en ligne par ailleurs : ne corrige une dénomination que si l'erreur est manifeste dans le texte lui-même (grammaire, incohérence entre deux passages).`
     : docType === 'decision_ar'
@@ -202,7 +217,7 @@ RÈGLES IMPORTANTES :
 - "suggested" contient le même extrait, corrigé.
 - Si un mot parasite est inséré dans un mot (ex: "dsdmet"), "original" = "dsdmet" et "suggested" = "met".
 - Relève TOUTES les occurrences de chaque type d'erreur dans tout le document.
-- Les corrections purement mécaniques (espaces de guillemets, accords simples, numéros de loi et de décret, noms de pays des adresses) sont déjà appliquées automatiquement par ailleurs : concentre-toi sur ce qui demande du jugement.
+${docType === 'rapport' ? '- Aucune correction automatique n\'est faite sur ce document en dehors des règles listées ci-dessous : relève toi-même les espaces, guillemets et accords fautifs.' : '- Les corrections purement mécaniques (espaces de guillemets, accords simples, numéros de loi et de décret, noms de pays des adresses) sont déjà appliquées automatiquement par ailleurs : concentre-toi sur ce qui demande du jugement.'}
 - Les formes fixées par les règles automatiques ci-dessous font foi, même si une autre forme te paraît plus correcte : ne propose JAMAIS de les modifier ni d'y revenir.${rulesC ? `\n${rulesC}` : ''}
 ${datesRule}
 - "code" est EXACTEMENT l'un des codes de consignes listés plus haut (ex: F-03, D-04, T-01), ou une chaîne vide. N'invente JAMAIS un code.

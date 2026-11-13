@@ -24,6 +24,7 @@ const authHeaders = () => { const p = getPw(); return p ? { "x-app-password": en
 // Logo du Conseil de la concurrence (PNG optimise, integre en base64).
 const LOGO_CC = "data:image/png;base64,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";
 import JSZip from "jszip";
+import { addComments } from "./wordComments.js";
 
 // ── PALETTE ──
 const C = {
@@ -63,7 +64,7 @@ Le Conseil de la Concurrence a reçu la notification d'une opération de projet 
 
 Fait à Rabat le 23 avril 2026`;
 
-const TYPE_LABELS = {cp_fr:"CP Français",cp_ar:"بلاغ AR",bilingue:"Bilingue",decision_ar:"Décision AR",lettre_ar:"Lettre AR",lettre_fr:"Lettre FR",lettres:"Lettres (FR et AR)",tous:"Tous"};
+const TYPE_LABELS = {cp_fr:"CP Français",cp_ar:"بلاغ AR",bilingue:"Bilingue",decision_ar:"Décision AR",lettre_ar:"Lettre AR",lettre_fr:"Lettre FR",lettres:"Lettres (FR et AR)",rapport:"Rapport d'instruction",tous:"Tous"};
 const CAT_BG = {FORME:"#dbeafe",FOND:"#fdf5e0",TERMINOLOGIE:"#e8f5ec",BILINGUE:"#f0e8f8"};
 const CAT_FG = {FORME:"#1e40af",FOND:"#7a4a00",TERMINOLOGIE:"#1a5c2a",BILINGUE:"#4a1a6e"};
 const TYPE_BORDER = {forme:"#3b82f6",fond:C.gold,terminologie:C.green,bilingue:C.purple};
@@ -111,6 +112,7 @@ function Sidebar({page, setPage}) {
       {item("correction","📝","Corriger les communiqués")}
       {item("decisions","⚖️","Corriger les décisions")}
       {item("lettres","✉️","Corriger les lettres")}
+      {item("rapports","📑","Corriger les rapports")}
       {item("comparaison","🔀","Comparaison FR / AR")}
       {item("historique","🕐","Historique")}
       <div style={{height:1,background:"rgba(255,255,255,.08)",margin:"7px 14px"}}/>
@@ -261,7 +263,30 @@ const CORRECTION_VARIANTS = {
     allowDemo: false,
     letters: true,
   },
+  rapport: {
+    title: "Corriger les rapports d'instruction",
+    sub: "Langue en suivi des modifications · Cohérence et contradictions en commentaires Word",
+    docTypes: [["rapport","Rapport d'instruction","Français ou arabe"]],
+    defaultType: "rapport",
+    allowDemo: false,
+    rapport: true,
+  },
 };
+
+// Rapports : découpage en parties de taille raisonnable, aux limites de paragraphes.
+const RAPPORT_PARTIE = 12000;
+const RAPPORT_PARALLELE = 3;
+function decouper(text, max = RAPPORT_PARTIE) {
+  const parts = []; let cur = "";
+  for (const para of String(text || "").split("\n")) {
+    if (cur && cur.length + para.length + 1 > max) { parts.push(cur); cur = ""; }
+    if (para.length > max) { for (let i = 0; i < para.length; i += max) parts.push(para.slice(i, i + max)); continue; }
+    cur = cur ? cur + "\n" + para : para;
+  }
+  if (cur) parts.push(cur);
+  return parts;
+}
+const CAT_OBS = {contradiction:"Contradiction",chiffres:"Chiffres",dates:"Dates",denominations:"Dénominations",qualification:"Qualification",conclusion:"Conclusion",renvois:"Renvois",autre:"Observation"};
 
 function CorrectionPage({consignes, history, setHistory, variant}) {
   const cfg = CORRECTION_VARIANTS[variant] || CORRECTION_VARIANTS.communique;
@@ -296,6 +321,11 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [verifications, setVerifications] = useState([]);
   const [destinataire, setDestinataire] = useState("auto");
   const [categorie, setCategorie] = useState(null);
+  // Rapports : deux relectures indépendantes, progression, observations de cohérence.
+  const [optsR, setOptsR] = useState({ langue: true, coherence: true });
+  const [progress, setProgress] = useState(null);
+  const [observations, setObservations] = useState([]);
+  const [obsStatus, setObsStatus] = useState({});
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -347,9 +377,65 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const steps = ["Lecture du document…","Chargement des consignes…","Analyse forme et fond…","Vérification terminologique…","Génération des corrections…"];
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+  const post = async (url, body) => {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(body) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(d.error || `HTTP ${res.status}`);
+    return d;
+  };
+
+  // Rapport d'instruction : la langue est relue partie par partie (3 à la fois),
+  // la cohérence sur le document entier, les deux en parallèle.
+  const analyzeRapport = async text => {
+    if (!optsR.langue && !optsR.coherence) { setError("Choisissez au moins une relecture."); return; }
+    setPhase("loading"); setError(""); setNotApplied([]); setWarnings([]); setStatuses({}); setObsStatus({}); setObservations([]); setGrille(null); setAppel(null);
+    const parts = optsR.langue ? decouper(text) : [];
+    let faits = 0;
+    setProgress({ total: parts.length, faits: 0, coherence: optsR.coherence ? "en cours" : null });
+    const avert = [];
+    const langue = (async () => {
+      if (!parts.length) return [];
+      const res = new Array(parts.length);
+      let next = 0;
+      const worker = async () => {
+        while (next < parts.length) {
+          const k = next++;
+          let essai = 0;
+          while (true) {
+            try { const d = await post("/api/analyze", { text: parts[k], docType: "rapport", opts: { forme: true }, consignes }); res[k] = d.corrections || []; if (d.appel) setAppel(d.appel); break; }
+            catch (e) { if (++essai >= 2) { res[k] = []; avert.push({ kind: "langue", message: `Partie ${k + 1} sur ${parts.length} non relue (${e.message}). Relancez l'analyse pour la reprendre.` }); break; } }
+          }
+          faits++; setProgress(p => ({ ...p, faits }));
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(RAPPORT_PARALLELE, parts.length) }, worker));
+      // Fusion sans doublons (une même faute relevée deux fois à la jonction de deux parties).
+      const vu = new Set(), out = [];
+      res.flat().forEach(c => { const key = c.original + "\u0000" + c.suggested; if (!vu.has(key)) { vu.add(key); out.push(c); } });
+      return out;
+    })();
+    const coherence = optsR.coherence ? post("/api/coherence", { text })
+      .then(d => { setProgress(p => ({ ...p, coherence: "terminée" })); return d; })
+      .catch(e => { avert.push({ kind: "coherence", message: "Relecture de cohérence non effectuée : " + e.message }); setProgress(p => ({ ...p, coherence: "échec" })); return null; })
+      : Promise.resolve(null);
+    const [corr, coh] = await Promise.all([langue, coherence]);
+    if (coh && coh.avertissement) avert.push({ kind: "coherence", message: coh.avertissement });
+    const obs = coh ? coh.observations || [] : [];
+    setCorrections(corr);
+    setObservations(obs);
+    setWarnings(avert);
+    setScore(null);
+    setSynthese([optsR.langue ? `${corr.length} correction(s) de langue sur ${parts.length} partie(s) relue(s).` : "", coh ? coh.synthese : ""].filter(Boolean).join(" "));
+    if (coh && coh.appel) setAppel(coh.appel);
+    setHistory(h => [{ id: Date.now(), file: fileName || "Rapport", type: "rapport", corrections: corr.length, score: null, date: new Date().toLocaleDateString("fr-FR"), data: corr, synthese: `${obs.length} observation(s) de cohérence` }, ...h]);
+    setProgress(null);
+    setPhase("results");
+  };
+
   const analyze = async () => {
     const text = fileContent || (cfg.allowDemo ? DEMO_TEXT : "");
     if (!text) { setError("Veuillez d'abord charger un document (.docx)."); return; }
+    if (cfg.rapport) return analyzeRapport(text);
     setPhase("loading"); setLoadStep(0); setStatuses({}); setError(""); setNotApplied([]); setWarnings([]); setVerifications([]); setCategorie(null);
 
     // Animate steps
@@ -565,7 +651,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
   const downloadWord = async () => {
     const accepted = corrections.filter((_, i) => statuses[i] !== "rejected");
-    if (!accepted.length) { setError("Aucune correction à télécharger."); return; }
+    const obsGardees = observations.filter((_, i) => obsStatus[i] !== "rejected");
+    if (!accepted.length && !obsGardees.length) { setError("Aucune correction à télécharger."); return; }
     if (!fileBytes) { setError("Chargez un fichier .docx pour utiliser cette fonctionnalité."); return; }
 
     try {
@@ -583,6 +670,26 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       );
 
       zip.file("word/document.xml", result);
+
+      // Observations de cohérence : commentaires Word ancrés sur le paragraphe cité.
+      if (obsGardees.length) {
+        const lire = async n => (zip.file(n) ? await zip.file(n).async("string") : null);
+        const out = addComments({
+          documentXml: result,
+          commentsXml: await lire("word/comments.xml"),
+          relsXml: await lire("word/_rels/document.xml.rels"),
+          contentTypesXml: await lire("[Content_Types].xml"),
+          date,
+          comments: obsGardees.map(o => ({
+            extrait: o.extrait,
+            texte: `[${o.gravite === "importante" ? "Important" : "À vérifier"} · ${CAT_OBS[o.categorie] || "Observation"}] ${o.observation}` + (o.extrait_lie ? `\nPassage lié : « ${o.extrait_lie} »` : ""),
+          })),
+        });
+        zip.file("word/document.xml", out.documentXml);
+        zip.file("word/comments.xml", out.commentsXml);
+        zip.file("word/_rels/document.xml.rels", out.relsXml);
+        zip.file("[Content_Types].xml", out.contentTypesXml);
+      }
       const blob = await zip.generateAsync({
         type: "blob",
         mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -590,7 +697,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = (fileName||"document").replace(/\.docx$/i, "") + "_corrections.docx";
+      a.download = (fileName||"document").replace(/\.docx$/i, "") + (cfg.rapport ? "_relu.docx" : "_corrections.docx");
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
@@ -614,6 +721,12 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       {cfg.letters && !consignes.some(c => c && c.active !== false && ["lettre_ar","lettre_fr","lettres"].includes(c.doctype)) && (
         <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:8,fontSize:12.5,color:C.text}}>
           Aucune consigne de lettre n'est chargée : seuls le modèle et les contrôles de dates s'appliqueront. Importez le fichier de consignes des lettres (Fiches de consignes · Importer JSON · Enregistrer sur le serveur), puis rechargez la page.
+        </div>
+      )}
+
+      {cfg.rapport && (
+        <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:8,fontSize:12,color:C.text,lineHeight:1.55}}>
+          Rapport confidentiel : son texte est transmis au modèle d'Anthropic pour la relecture. Déposez de préférence la version anonymisée produite par l'outil d'anonymisation.
         </div>
       )}
 
@@ -719,8 +832,20 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
           )}
 
           <Card>
-            <SLabel>Options de correction</SLabel>
-            {[["forme","Corrections de forme","Orthographe, syntaxe, typographie"],["fond","Corrections de fond","Qualification juridique, structure"],["terminologie","Terminologie consacrée","Termes loi n°104-12"]].map(([k,label,sub]) => (
+            <SLabel>{cfg.rapport ? "Relectures" : "Options de correction"}</SLabel>
+            {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications"],["coherence","Cohérence et contradictions","Chiffres, dates, dénominations, qualification, conclusions · commentaires Word"]].map(([k,label,sub]) => (
+              <div key={k} onClick={() => setOptsR(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${optsR[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:optsR[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
+                <div style={{width:15,height:15,border:`1.5px solid ${optsR[k]?C.navy2:C.border2}`,borderRadius:4,background:optsR[k]?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {optsR[k] && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
+                </div>
+                <div>
+                  <div style={{fontSize:12,fontWeight:500,color:C.text}}>{label}</div>
+                  <div style={{fontSize:10,color:C.text3,marginTop:1}}>{sub}</div>
+                </div>
+              </div>
+            ))}
+            {cfg.rapport && fileContent && <div style={{fontSize:10,color:C.text3,margin:"2px 0 4px"}}>{decouper(fileContent).length} partie(s) de texte à relire pour la langue · {Math.round(fileContent.length / 1000)} 000 caractères environ</div>}
+            {!cfg.rapport && [["forme","Corrections de forme","Orthographe, syntaxe, typographie"],["fond","Corrections de fond","Qualification juridique, structure"],["terminologie","Terminologie consacrée","Termes loi n°104-12"]].map(([k,label,sub]) => (
               <div key={k} onClick={() => setOpts(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${opts[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:opts[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
                 <div style={{width:15,height:15,border:`1.5px solid ${opts[k]?C.navy2:C.border2}`,borderRadius:4,background:opts[k]?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {opts[k] && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
@@ -746,7 +871,23 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
             </Card>
           )}
 
-          {phase==="loading" && (
+          {phase==="loading" && progress && (
+            <Card style={{padding:"30px 20px"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+                <Spinner/>
+                {progress.total > 0 && (
+                  <div style={{width:"100%",maxWidth:300}}>
+                    <div style={{fontSize:11.5,color:C.navy2,marginBottom:5}}>Langue : partie {Math.min(progress.faits + 1, progress.total)} sur {progress.total}{progress.faits === progress.total ? " · terminé" : ""}</div>
+                    <div style={{height:6,background:C.cream3,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.round(100 * progress.faits / progress.total)}%`,background:C.navy2,transition:"width .4s"}}/></div>
+                  </div>
+                )}
+                {progress.coherence && <div style={{fontSize:11.5,color:progress.coherence === "échec" ? C.red : C.navy2}}>Cohérence du rapport entier : {progress.coherence}</div>}
+                <div style={{fontSize:10.5,color:C.text3,textAlign:"center",lineHeight:1.5}}>Un long rapport demande plusieurs minutes. Gardez cette page ouverte.</div>
+              </div>
+            </Card>
+          )}
+
+          {phase==="loading" && !progress && (
             <Card style={{padding:"36px 20px"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14}}>
                 <Spinner/>
@@ -767,10 +908,12 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
               <Card>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
                   <div style={{fontSize:13,fontWeight:500,color:C.navy2}}>Résumé de l'analyse</div>
-                  <span style={{background:score>=7?C.greenLight:C.amberLight,color:score>=7?C.green:C.amber,padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>Score : {score}/10</span>
+                  {score != null && <span style={{background:score>=7?C.greenLight:C.amberLight,color:score>=7?C.green:C.amber,padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>Score : {score}/10</span>}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:12}}>
-                  {[["Forme",corrections.filter(c=>c.type==="forme").length,"#2563eb"],["Fond",corrections.filter(c=>c.type==="fond").length,C.amber],["Terminol.",corrections.filter(c=>c.type==="terminologie"||c.type==="bilingue").length,C.green],["Score",score+"/10",C.navy]].map(([label,val,color]) => (
+                  {(cfg.rapport
+                    ? [["Langue",corrections.length,"#2563eb"],["Importantes",observations.filter(o=>o.gravite==="importante").length,C.red],["À vérifier",observations.filter(o=>o.gravite!=="importante").length,C.amber],["Observations",observations.length,C.navy]]
+                    : [["Forme",corrections.filter(c=>c.type==="forme").length,"#2563eb"],["Fond",corrections.filter(c=>c.type==="fond").length,C.amber],["Terminol.",corrections.filter(c=>c.type==="terminologie"||c.type==="bilingue").length,C.green],["Score",score+"/10",C.navy]]).map(([label,val,color]) => (
                     <div key={label} style={{background:C.cream2,borderRadius:7,padding:"10px 8px",textAlign:"center"}}>
                       <div style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:600,color}}>{val}</div>
                       <div style={{fontSize:9.5,color:C.text2,marginTop:2,textTransform:"uppercase",letterSpacing:".04em"}}>{label}</div>
@@ -817,9 +960,36 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
               </Card>
               )}
 
+              {cfg.rapport && observations.length > 0 && (
+              <Card>
+                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:4}}>Cohérence et contradictions ({observations.length})</div>
+                <div style={{fontSize:10.5,color:C.text3,marginBottom:9}}>Chaque observation gardée devient un commentaire dans la marge du fichier Word, sur le paragraphe cité. Le texte n'est pas modifié.</div>
+                {observations.map((o,i) => {
+                  const st = obsStatus[i];
+                  return (
+                    <div key={i} style={{padding:"10px 12px",border:`1px solid ${C.border}`,borderLeft:`3px solid ${o.gravite==="importante"?C.red:C.amber}`,borderRadius:8,marginBottom:6,background:st==="rejected"?C.redLight:"#fff",opacity:st==="rejected"?.4:1}}>
+                      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:5}}>
+                        <span style={{fontSize:9.5,fontWeight:600,color:o.gravite==="importante"?C.red:C.amber,textTransform:"uppercase",letterSpacing:".04em"}}>{o.gravite==="importante"?"Important":"À vérifier"}</span>
+                        <span style={{fontSize:9.5,color:C.text3}}>· {CAT_OBS[o.categorie] || "Observation"}</span>
+                        {!o.localise && <span style={{fontSize:9.5,color:C.text3}}>· passage non localisé</span>}
+                      </div>
+                      <div style={{fontSize:12,color:C.text,lineHeight:1.55}}>{o.observation}</div>
+                      <div dir="auto" style={{fontSize:11,color:C.text2,marginTop:5,fontStyle:"italic",unicodeBidi:"plaintext"}}>« {o.extrait} »</div>
+                      {o.extrait_lie && <div dir="auto" style={{fontSize:11,color:C.text2,marginTop:2,fontStyle:"italic",unicodeBidi:"plaintext"}}>Passage lié : « {o.extrait_lie} »</div>}
+                      <div style={{display:"flex",gap:5,marginTop:7}}>
+                        <button onClick={() => setObsStatus(p => ({...p,[i]:"accepted"}))} style={{padding:"3px 9px",borderRadius:5,border:"1px solid #a7d7b7",background:C.greenLight,color:C.green,fontSize:10.5,fontWeight:500,cursor:"pointer"}}>✓ Garder</button>
+                        <button onClick={() => setObsStatus(p => ({...p,[i]:"rejected"}))} style={{padding:"3px 9px",borderRadius:5,border:"1px solid #f5b7b7",background:C.redLight,color:C.red,fontSize:10.5,fontWeight:500,cursor:"pointer"}}>✗ Écarter</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+              )}
+
+              {(!cfg.rapport || corrections.length > 0) && (
               <Card>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                  <div style={{fontSize:13,fontWeight:500,color:C.navy2}}>Corrections suggérées ({corrections.length})</div>
+                  <div style={{fontSize:13,fontWeight:500,color:C.navy2}}>{cfg.rapport ? "Corrections de langue" : "Corrections suggérées"} ({corrections.length})</div>
                   <div style={{display:"flex",gap:5}}>
                     <button onClick={acceptAll} style={{padding:"4px 9px",borderRadius:5,border:`1px solid ${C.border2}`,background:"#fff",fontSize:10.5,cursor:"pointer",color:C.text2}}>Tout accepter</button>
                     <button onClick={rejectAll} style={{padding:"4px 9px",borderRadius:5,border:`1px solid ${C.border2}`,background:"#fff",fontSize:10.5,cursor:"pointer",color:C.text2}}>Tout rejeter</button>
@@ -848,9 +1018,10 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                   );
                 })}
               </Card>
+              )}
 
               <button onClick={downloadWord} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                <span>📥</span> Télécharger Word (.docx) avec corrections
+                <span>📥</span> {cfg.rapport ? "Télécharger le rapport relu (.docx)" : "Télécharger Word (.docx) avec corrections"}
               </button>
 
               {notApplied.length > 0 && (
@@ -1325,7 +1496,7 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}>
                 <FInput label="Code" field="code" ph="ex : F-01" form={form} setForm={setForm}/>
-                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["lettre_ar","Lettre AR"],["lettre_fr","Lettre FR"],["lettres","Lettres (FR et AR)"],["tous","Tous types"]]} form={form} setForm={setForm}/>
+                <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["lettre_ar","Lettre AR"],["lettre_fr","Lettre FR"],["lettres","Lettres (FR et AR)"],["rapport","Rapport d'instruction"],["tous","Tous types"]]} form={form} setForm={setForm}/>
                 <div>
                 <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Catégorie</div>
                 <select value={form.category||""} onChange={e => {
@@ -1675,6 +1846,7 @@ export default function App() {
           {page==="correction"    && <CorrectionPage consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="decisions"     && <CorrectionPage variant="decision" consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="lettres"       && <CorrectionPage variant="lettre" consignes={consignes} history={history} setHistory={setHistory}/>}
+          {page==="rapports"      && <CorrectionPage variant="rapport" consignes={consignes} history={history} setHistory={setHistory}/>}
           {page==="comparaison"   && <ComparaisonPage consignes={consignes}/>}
           {page==="historique"    && <HistoriquePage history={history}/>}
           {page==="dashboard"     && <DashboardPage history={history}/>}
