@@ -100,7 +100,8 @@ const RESERVE = /(?:plus de|moins de|environ|près de|presque|inférieure?s? à|
 const PHRASE_SEUIL = /seuil|article\s+(?:8|12)\b|25\s?% ou plus|40\s?% des/i;
 
 function phrases(text) {
-  return String(text).split('\n').flatMap(p => p.split(/(?<=[.;])\s+(?=[A-ZÀ-Ý«(])/)).map(s => s.trim()).filter(s => s.length > 20);
+  // Pas de coupure après une abréviation (« M. Hugues… », « art. 12 », initiales « P. Fabre »).
+  return String(text).split('\n').flatMap(p => p.split(/(?<=(?<!\b(?:M|MM|Mme|Me|Dr|Pr|art|al|cf|[A-Z]))[.;])\s+(?=[A-ZÀ-Ý«(])/)).map(s => s.trim()).filter(s => s.length > 20);
 }
 
 const NEUTRES = /^(?:net|nets|hors taxes|HT|total|global|annuel)$/i;
@@ -203,7 +204,33 @@ export function controleMemeFait(text) {
   return obs;
 }
 
+// --- 4. Même nom, prénoms différents (« M. Hugues Le Feunteun » / « M. François Le Feunteun ») ---
+const PARTICULE = '(?:Le|La|De|Du|Des|Ben|Ibn|El|Al|Ait|Aït|Van|Von|Di|Da)';
+const RE_PERSONNE = new RegExp(`\\b(M\\.|Mme|Monsieur|Madame)\\s+([A-ZÉÈ][a-zéèëêïîôûç]+(?:-[A-ZÉÈ][a-zéèëêïîôûç]+)?(?:\\s+(?!${PARTICULE}\\b)[A-ZÉÈ][a-zéèëêïîôûç]+)?)\\s+((?:${PARTICULE}\\s+)?[A-ZÉÈ][A-Za-zÉÈéèëêïîôûç'’-]+)`, 'g');
+export function controleNoms(text) {
+  const parNom = new Map();
+  for (const ph of phrases(text)) {
+    for (const m of ph.matchAll(RE_PERSONNE)) {
+      const civ = /^(?:Mme|Madame)$/.test(m[1]) ? 'F' : 'M';
+      const cle = civ + '|' + m[3].toLowerCase();
+      if (!parNom.has(cle)) parNom.set(cle, new Map());
+      const prenoms = parNom.get(cle);
+      if (!prenoms.has(m[2])) prenoms.set(m[2], { n: 0, nom: `${m[1]} ${m[2]} ${m[3]}`, extrait: ph.slice(Math.max(0, m.index - 60), m.index + m[0].length + 60).trim() });
+      prenoms.get(m[2]).n++;
+    }
+  }
+  const obs = [];
+  for (const [, prenoms] of parNom) {
+    if (prenoms.size < 2) continue;
+    const l = [...prenoms.values()].sort((x, y) => y.n - x.n);
+    const maj = l[0];
+    for (const autre of l.slice(1)) obs.push({ categorie: 'contradiction', gravite: 'a_verifier', source: 'regle', extrait: autre.extrait, extrait_lie: maj.extrait,
+      observation: `Même nom, prénoms différents : « ${autre.nom} » (${autre.n} mention${autre.n > 1 ? 's' : ''}) et « ${maj.nom} » (${maj.n} mention${maj.n > 1 ? 's' : ''}). S'il s'agit de la même personne, l'un des prénoms est erroné ; sinon, la seconde personne n'est peut-être pas présentée.` });
+  }
+  return obs;
+}
+
 /** Tous les contrôles chiffrés d'un rapport. */
 export function controlesChiffres({ documentXml, text }) {
-  return controleTotaux(documentXml).concat(controleMemeFait(text));
+  return controleTotaux(documentXml).concat(controleMemeFait(text), controleNoms(text));
 }

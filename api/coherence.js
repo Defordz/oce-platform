@@ -49,7 +49,7 @@ Relève uniquement :
 1. CONTRADICTIONS DE FAITS : deux passages du rapport qui affirment des faits incompatibles. Exemples : deux personnes ou deux sociétés différentes pour le même rôle (titulaire d'une marque, acquéreur, entité qui prend le contrôle) ; une opération décrite comme contrôle exclusif puis conjoint ; un marché dit national puis analysé comme régional ; deux dates différentes pour le même acte ; une absence de chevauchement affirmée puis des chevauchements analysés.
 2. CHIFFRES : un même chiffre (chiffre d'affaires, part de marché, pourcentage de capital, prix, montant, nombre d'entités) qui diffère d'un passage à l'autre ; un total qui ne correspond pas à la somme de ses éléments ; des parts d'un même marché dont la somme dépasse 100 % ; une conversion ou un calcul de seuil (article 12) faux.
 
-Ne relève PAS : les omissions (« le rapport ne précise pas… »), les questions laissées ouvertes, les imprécisions, la structure ou le sommaire, les renvois, le style, la langue, l'appréciation concurrentielle elle-même. En cas de doute sur une contradiction, ne la relève pas.
+Ne relève PAS : les omissions (« le rapport ne précise pas… »), les questions laissées ouvertes, les imprécisions, la structure ou le sommaire, les renvois, le style, la langue, l'appréciation concurrentielle elle-même. Une contradiction probable mais pas certaine (par exemple deux prénoms différents pour ce qui semble être la même personne, dans le même rôle) se relève en « a_verifier » : ne la passe pas sous silence.
 
 Méthode :
 - Lis tout le rapport avant de conclure. Ne t'appuie que sur le texte du rapport.

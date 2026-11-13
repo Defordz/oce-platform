@@ -1,7 +1,7 @@
 // Contrôles chiffrés sans modèle (rapports d'instruction).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { controleTotaux, controleMemeFait } from '../src/chiffres.js';
+import { controleTotaux, controleMemeFait, controleNoms } from '../src/chiffres.js';
 
 const cell = t => `<w:tc><w:p><w:r><w:t>${t}</w:t></w:r></w:p></w:tc>`;
 const tab = (legende, rows) => `<w:p><w:r><w:t>${legende}</w:t></w:r></w:p><w:tbl>${rows.map(r => `<w:tr>${r.map(cell).join('')}</w:tr>`).join('')}</w:tbl>`;
@@ -37,4 +37,13 @@ test('même fait, deux chiffres ; montants presque identiques ; pas de faux posi
   // participation au capital
   const c = controleMemeFait('La société « A » détient 99,68 % du capital social de la société « B ».\nPar ailleurs, « A » détient 99,25 % du capital de « B ».');
   assert.equal(c.length, 1);
+});
+
+test('même nom, prénoms différents ; abréviations sans coupure de phrase', () => {
+  const t = 'La marque appartient à M. Hugues Le Feunteun depuis 1990.\nM. Hugues Le Feunteun cède la marque.\nLe contrat a été conclu avec M. François Le Feunteun en 1999.\nLe rapporteur est M. Mohammed BENAGUID.\nMme Rajaa MAGHRABI a été désignée.';
+  const o = controleNoms(t);
+  assert.equal(o.length, 1);
+  assert.ok(o[0].observation.includes('« M. François Le Feunteun » (1 mention)') && o[0].observation.includes('« M. Hugues Le Feunteun » (2 mentions)'));
+  assert.ok(o[0].extrait.includes('François'));
+  assert.deepEqual(controleNoms('M. Ali Bennani et Mme Salma Bennani sont associés.'), [], 'civilités différentes : pas de comparaison');
 });

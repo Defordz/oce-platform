@@ -287,6 +287,7 @@ function decouper(text, max = RAPPORT_PARTIE) {
   if (cur) parts.push(cur);
   return parts;
 }
+const NOMS_MODELES = { "claude-haiku-5-5": "Haiku 5.5", "claude-sonnet-5-5": "Sonnet 5.5", "claude-opus-5-5": "Opus 5.5" };
 const dollars = v => (v == null ? "?" : v.toLocaleString("fr-FR", { minimumFractionDigits: v < 0.1 ? 3 : 2, maximumFractionDigits: v < 0.1 ? 3 : 2 }) + " $");
 const CAT_OBS = {contradiction:"Contradiction",chiffres:"Chiffres",dates:"Dates",denominations:"Dénominations",qualification:"Qualification",conclusion:"Conclusion",renvois:"Renvois",autre:"Observation"};
 
@@ -330,6 +331,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [obsStatus, setObsStatus] = useState({});
   const [notes, setNotes] = useState([]); // notes de bas de page du rapport
   const [cout, setCout] = useState(null);  // coût réel de l'analyse, en dollars
+  const [modeleLangue, setModeleLangue] = useState("claude-sonnet-5-5");
   const fileRef = useRef();
 
   const handleFile = async f => {
@@ -414,7 +416,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
           const k = next++;
           let essai = 0;
           while (true) {
-            try { const d = await post("/api/analyze", { text: parts[k], docType: "rapport", opts: { forme: true }, consignes }); res[k] = d.corrections || []; if (d.appel && d.appel.cout) coutLangue += d.appel.cout; break; }
+            try { const d = await post("/api/analyze", { text: parts[k], docType: "rapport", opts: { forme: true }, consignes, modele: modeleLangue }); res[k] = d.corrections || []; if (d.appel && d.appel.cout) coutLangue += d.appel.cout; break; }
             catch (e) { if (++essai >= 2) { res[k] = []; avert.push({ kind: "langue", message: `Partie ${k + 1} sur ${parts.length} non relue (${e.message}). Relancez l'analyse pour la reprendre.` }); break; } }
           }
           faits++; setProgress(p => ({ ...p, faits }));
@@ -441,15 +443,20 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
         regles = controlesChiffres({ documentXml: await z.file("word/document.xml").async("string"), text: texteLangue });
       } catch (e) { avert.push({ kind: "chiffres", message: "Contrôles chiffrés non effectués : " + e.message }); }
     }
-    const recoupe = o => regles.some(r => [r.extrait, r.extrait_lie].filter(Boolean).some(x => { const a = normTexte(x), b = normTexte(o.extrait); return a && b && (a.includes(b) || b.includes(a)); }));
-    const obs = regles.map(r => ({ ...r, localise: true })).concat((coh ? coh.observations || [] : []).filter(o => !(o.categorie === "chiffres" && recoupe(o))));
+    const grandsNombres = t => new Set((String(t).replace(/(\d)[ \u00a0\u202f](?=\d{3})/g, "$1").match(/\d{5,}/g) || []));
+    const recoupe = o => regles.some(r => {
+      if ([r.extrait, r.extrait_lie].filter(Boolean).some(x => { const a = normTexte(x), b = normTexte(o.extrait); return a && b && (a.includes(b) || b.includes(a)); })) return true;
+      const nr = grandsNombres(r.observation), no = grandsNombres(o.observation + " " + o.extrait);
+      return [...nr].some(x => no.has(x));
+    });
+    const obs = regles.map(r => ({ ...r, localise: true })).concat((coh ? coh.observations || [] : []).filter(o => !recoupe(o)));
     setCorrections(corr);
     setObservations(obs);
     setWarnings(avert);
     setScore(null);
     setSynthese([optsR.langue ? `${corr.length} correction(s) de langue sur ${parts.length} partie(s) relue(s).` : "", coh ? coh.synthese : ""].filter(Boolean).join(" "));
     setAppel(null);
-    setCout({ langue: optsR.langue ? coutLangue : null, coherence: coh && coh.appel ? coh.appel.cout : null });
+    setCout({ langue: optsR.langue ? coutLangue : null, coherence: coh && coh.appel ? coh.appel.cout : null, modeleLangue: NOMS_MODELES[modeleLangue] });
     setHistory(h => [{ id: Date.now(), file: fileName || "Rapport", type: "rapport", corrections: corr.length, score: null, date: new Date().toLocaleDateString("fr-FR"), data: corr, synthese: `${obs.length} observation(s) de cohérence` }, ...h]);
     setProgress(null);
     setPhase("results");
@@ -865,7 +872,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
           <Card>
             <SLabel>{cfg.rapport ? "Relectures" : "Options de correction"}</SLabel>
-            {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications · Haiku 5.5"],["coherence","Contradictions et chiffres","Contradictions majeures de faits, erreurs de chiffres · commentaires Word"]].map(([k,label,sub]) => (
+            {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications"],["coherence","Contradictions et chiffres","Contradictions majeures de faits, erreurs de chiffres · commentaires Word"]].map(([k,label,sub]) => (
               <div key={k} onClick={() => setOptsR(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${optsR[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:optsR[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
                 <div style={{width:15,height:15,border:`1.5px solid ${optsR[k]?C.navy2:C.border2}`,borderRadius:4,background:optsR[k]?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {optsR[k] && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
@@ -876,6 +883,16 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 </div>
               </div>
             ))}
+            {cfg.rapport && optsR.langue && (
+              <div style={{display:"flex",alignItems:"center",gap:8,margin:"0 0 6px"}}>
+                <span style={{fontSize:10.5,color:C.text3}}>Modèle pour la langue</span>
+                <select value={modeleLangue} onChange={e => setModeleLangue(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:11,color:C.text2,background:"#fff"}}>
+                  <option value="claude-haiku-5-5">Haiku 5.5 (le moins cher)</option>
+                  <option value="claude-sonnet-5-5">Sonnet 5.5</option>
+                  <option value="claude-opus-5-5">Opus 5.5 (le plus précis)</option>
+                </select>
+              </div>
+            )}
             {cfg.rapport && fileContent && <div style={{fontSize:10,color:C.text3,margin:"2px 0 4px"}}>{decouper(fileContent + "\n" + notes.flatMap(n => n.paras).join("\n")).length} partie(s) à relire pour la langue · {Math.round(fileContent.length / 1000)} 000 caractères{notes.length ? ` et ${notes.length} notes de bas de page` : ""}</div>}
             {!cfg.rapport && [["forme","Corrections de forme","Orthographe, syntaxe, typographie"],["fond","Corrections de fond","Qualification juridique, structure"],["terminologie","Terminologie consacrée","Termes loi n°104-12"]].map(([k,label,sub]) => (
               <div key={k} onClick={() => setOpts(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${opts[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:opts[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
@@ -969,7 +986,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 {(appel || cout) && <div style={{marginTop:6,fontSize:10,color:C.text3}}>
                   {appel ? `Modèle : ${appel.modele}` : ""}
                   {cout && cout.total != null ? `${appel ? " · " : ""}Coût de l'analyse : ${dollars(cout.total)}` : ""}
-                  {cout && cout.total == null && (cout.langue != null || cout.coherence != null) ? `Coût de l'analyse : ${dollars((cout.langue || 0) + (cout.coherence || 0))} (langue, Haiku 5.5 : ${cout.langue != null ? dollars(cout.langue) : "non lancée"} · cohérence, Opus 5.5 : ${cout.coherence != null ? dollars(cout.coherence) : "non lancée"})` : ""}
+                  {cout && cout.total == null && (cout.langue != null || cout.coherence != null) ? `Coût de l'analyse : ${dollars((cout.langue || 0) + (cout.coherence || 0))} (langue, ${cout.modeleLangue || "?"} : ${cout.langue != null ? dollars(cout.langue) : "non lancée"} · cohérence, Opus 5.5 : ${cout.coherence != null ? dollars(cout.coherence) : "non lancée"})` : ""}
                 </div>}
               </Card>
 

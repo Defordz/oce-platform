@@ -446,9 +446,9 @@ export default async function handler(req, res) {
     // Analyse principale et, pour les lettres, vérification en ligne des
     // dénominations, menées en parallèle.
     const [parsed, verif] = await Promise.all([
-      // Rapports : la relecture de langue, découpée en parties, est confiée à Haiku 5.5
-      // (40 fois moins cher qu'Opus) ; les autres documents restent sur Opus 5.5.
-      callStructured({ apiKey, system, user, tool: isCommunique(docType) ? ANALYZE_TOOL_CP : ANALYZE_TOOL, maxTokens: MAX_TOKENS, model: docType === 'rapport' ? 'claude-haiku-5-5' : body.modele }),
+      // Rapports : modèle de la relecture de langue au choix (Sonnet 5.5 par défaut ;
+      // Haiku 5.5 n'a relevé qu'une faute sur six au premier essai Kenta).
+      callStructured({ apiKey, system, user, tool: isCommunique(docType) ? ANALYZE_TOOL_CP : ANALYZE_TOOL, maxTokens: MAX_TOKENS, model: docType === 'rapport' ? (body.modele || 'claude-sonnet-5-5') : body.modele }),
       verifierEnLigne ? verifyEntities({ apiKey, text, docType, envoi }) : Promise.resolve(null),
     ]);
 
