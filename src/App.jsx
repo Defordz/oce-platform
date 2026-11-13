@@ -32,16 +32,20 @@ import { controleRenvois } from "./renvois.js";
 
 // ── PALETTE ──
 const C = {
-  navy:"#0f2650", navy2:"#1a3a6e",
-  cream:"#f8f6f0", cream2:"#f0ede4", cream3:"#e8e3d8",
-  gold:"#b8962e",
-  green:"#1a5c2a", greenLight:"#e8f5ec",
-  red:"#8b1a1a", redLight:"#fdf0f0",
-  amber:"#7a4a00", amberLight:"#fdf5e0",
+  navy:"#12284F", navy2:"#1F3B6E",
+  cream:"#F7F5EF", cream2:"#F1EEE5", cream3:"#E6E1D5",
+  gold:"#C9A646",
+  green:"#1E6B3A", greenLight:"#E8F3EC", greenLine:"#BFD9C8",
+  red:"#A3261F", redLight:"#FDF6F5", redLine:"#F0D3CF",
+  amber:"#7A4A00", amberLight:"#FFFAEE", amberLine:"#EEDDB4",
   purple:"#4a1a6e", purpleLight:"#f0e8f8",
-  text:"#1a1a2e", text2:"#4a4a6a", text3:"#8a8aaa",
-  border:"#d8d3c8", border2:"#c8c3b8",
+  blueLight:"#E9EEF7",
+  text:"#1C2333", text2:"#4D5566", text3:"#5F6675",
+  border:"#E3DED2", border2:"#C9D3E6", line:"#EEEAE0",
 };
+// Titres : serif institutionnelle ; texte courant : Inter (polices chargées dans main.jsx).
+const SERIF = "'Source Serif 4', Georgia, serif";
+const H2 = { fontFamily: SERIF, fontSize: 19, fontWeight: 600, color: C.navy, lineHeight: 1.3, margin: 0 };
 
 // Les consignes sont desormais chargees depuis le serveur (/api/consignes).
 // Cette liste locale ne sert que de repli si le serveur est injoignable.
@@ -97,52 +101,80 @@ function Badge({t, small}) {
   return <span style={{background:CAT_BG[t]||"#f0f0f0",color:CAT_FG[t]||"#555",padding:small?"2px 5px":"2px 8px",borderRadius:20,fontSize:small?9:10,fontWeight:600,letterSpacing:".03em"}}>{t}</span>;
 }
 
+// Icônes au trait (SVG en ligne, couleur du texte parent) : remplacent les émojis,
+// dont le rendu varie d'un poste à l'autre.
+const ICONES = {
+  doc: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></>,
+  liste: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 12h6M9 16h4"/></>,
+  telecharger: <path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>,
+  exporter: <path d="M12 16V5M7 10l5-5 5 5M5 20h14"/>,
+  alerte: <><path d="M12 3.5l9 16H3z"/><path d="M12 10v4.5M12 17.2v.3"/></>,
+  ok: <path d="M5 12.5l4.5 4.5L19 7"/>,
+  non: <path d="M6 6l12 12M18 6L6 18"/>,
+  horloge: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
+  comparer: <path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"/>,
+  enregistrer: <><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></>,
+  dossier: <path d="M3 6.5h6l2 2h10V19H3z"/>,
+  assistant: <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>,
+  bouclier: <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>,
+  cadenas: <><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
+  crayon: <path d="M4 20h4L19 9l-4-4L4 16z"/>,
+  etoile: <path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"/>,
+};
+function Icon({ n, size = 16, stroke = 2, style }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{flexShrink:0,...style}}>{ICONES[n]}</svg>;
+}
+
+// Boutons de choix (Garder / Écarter) et boutons icônes (Accepter / Rejeter).
+const btnChoix = on => ({minHeight:34,padding:"0 14px",borderRadius:6,border:`1px solid ${on ? C.navy : C.border2}`,background:on ? C.navy : "#fff",color:on ? "#fff" : C.navy,fontSize: 13,fontWeight:500,cursor:"pointer"});
+const btnIcone = (on, sorte) => {
+  const [fg, bg, bd] = sorte === "ok" ? [C.green, C.greenLight, C.greenLine] : [C.red, C.redLight, C.redLine];
+  return {width:36,height:36,borderRadius:6,border:`1px solid ${on ? bd : C.border}`,background:on ? bg : "#fff",color:on ? fg : C.text3,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0};
+};
+const btnSecondaire = {minHeight:34,padding:"0 12px",borderRadius:6,border:`1px solid ${C.border2}`,background:"#fff",color:C.navy,fontSize: 13,fontWeight:500,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6};
+
 function Sidebar({page, setPage}) {
-  const item = (id, icon, label) => (
-    <div onClick={() => setPage(id)} style={{display:"flex",alignItems:"center",gap:9,padding:"8px 14px",cursor:"pointer",borderRadius:6,margin:"1px 7px",background:page===id?"rgba(255,255,255,.13)":"transparent",color:page===id?"#fff":"rgba(255,255,255,.58)",fontSize:12.5,fontWeight:page===id?500:400,transition:"all .15s"}}>
-      <span style={{fontSize:14,opacity:page===id?1:.7}}>{icon}</span>{label}
-    </div>
-  );
+  const item = (id, label) => {
+    const on = page === id;
+    return (
+      <button type="button" className="oce-nav" onClick={() => setPage(id)} aria-current={on ? "page" : undefined}
+        style={{display:"block",width:"100%",textAlign:"left",border:0,cursor:"pointer",padding:"9px 12px",borderRadius:6,background:on ? "rgba(255,255,255,.12)" : "transparent",boxShadow:on ? `inset 3px 0 0 ${C.gold}` : "none",color:on ? "#fff" : "#DCE3F0",fontSize: 13.5,fontWeight:on ? 500 : 400,lineHeight:1.4,transition:"background .15s"}}>
+        {label}
+      </button>
+    );
+  };
+  const rubrique = t => <div style={{fontSize: 11,letterSpacing:".1em",textTransform:"uppercase",color:"#AEBBD3",padding:"16px 12px 6px"}}>{t}</div>;
   return (
-    <aside style={{width:210,background:C.navy,display:"flex",flexDirection:"column",flexShrink:0,minHeight:"100vh"}}>
-      <div style={{padding:"22px 18px 14px",borderBottom:"1px solid rgba(255,255,255,.1)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:9}}>
-          <div style={{width:28,height:28,background:"rgba(255,255,255,.15)",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>⚖️</div>
-          <div style={{fontFamily:"Georgia,serif",fontSize:12.5,color:"#fff",lineHeight:1.3,fontWeight:600}}>Conseil de la<br/>Concurrence</div>
+    <aside style={{width:236,background:C.navy,display:"flex",flexDirection:"column",flexShrink:0,height:"100vh",overflowY:"auto"}}>
+      <div style={{padding:"22px 20px 18px",borderBottom:"1px solid rgba(255,255,255,.14)"}}>
+        <div style={{background:"#fff",borderRadius:6,padding:"8px 10px",display:"flex",justifyContent:"center"}}>
+          <img src={LOGO_CC} alt="Conseil de la concurrence" style={{width:"100%",maxWidth:186,height:"auto",display:"block"}}/>
         </div>
-        <div style={{fontSize:9,color:"rgba(255,255,255,.32)",letterSpacing:".1em",textTransform:"uppercase"}}>Correction OCE v1.0</div>
+        <div style={{marginTop:13,fontSize: 11,letterSpacing:".08em",textTransform:"uppercase",color:"#C9D3E6"}}>Correction OCE · version 2</div>
       </div>
-      <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Rapporteur</div>
-      {item("correction","📝","Corriger les communiqués")}
-      {item("decisions","⚖️","Corriger les décisions")}
-      {item("lettres","✉️","Corriger les lettres")}
-      {item("rapports","📑","Corriger les rapports")}
-      {item("comparaison","🔀","Comparaison FR / AR")}
-      {item("historique","🕐","Historique")}
-      <div style={{height:1,background:"rgba(255,255,255,.08)",margin:"7px 14px"}}/>
-      <div style={{padding:"12px 10px 5px",fontSize:8.5,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(255,255,255,.28)",fontWeight:500}}>Administrateur</div>
-      {item("dashboard","📊","Tableau de bord")}
-      {item("consignes","📋","Fiches de consignes")}
-      <div style={{marginTop:"auto",padding:14,borderTop:"1px solid rgba(255,255,255,.08)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:9}}>
-          <div style={{width:28,height:28,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:600,color:"#fff"}}>RA</div>
-          <div>
-            <div style={{fontSize:11.5,color:"rgba(255,255,255,.7)"}}>Rapporteur</div>
-            <div style={{fontSize:9.5,color:"rgba(255,255,255,.33)"}}>Concentrations éco.</div>
-          </div>
-        </div>
-      </div>
+      <nav aria-label="Navigation principale" style={{display:"flex",flexDirection:"column",gap:2,padding:"4px 12px 20px"}}>
+        {rubrique("Rapporteur")}
+        {item("correction","Communiqués")}
+        {item("decisions","Décisions")}
+        {item("lettres","Lettres")}
+        {item("rapports","Rapports d'instruction")}
+        {item("comparaison","Comparaison FR / AR")}
+        {item("historique","Historique")}
+        {rubrique("Administration")}
+        {item("dashboard","Tableau de bord")}
+        {item("consignes","Fiches de consignes")}
+      </nav>
     </aside>
   );
 }
 
 function PageHeader({title, sub, right}) {
   return (
-    <div style={{padding:"22px 30px 16px",borderBottom:`1px solid ${C.border}`,background:C.cream,flexShrink:0}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div>
-          <h1 style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:600,color:C.navy,margin:0}}>{title}</h1>
-          {sub && <p style={{fontSize:12.5,color:C.text2,marginTop:3,margin:"3px 0 0"}}>{sub}</p>}
+    <div style={{padding:"26px 36px 0",background:C.cream,flexShrink:0}}>
+      <div style={{display:"flex",flexWrap:"wrap",alignItems:"flex-end",justifyContent:"space-between",gap:16,paddingBottom:16,borderBottom:`2px solid ${C.gold}`}}>
+        <div style={{minWidth:0}}>
+          <h1 style={{fontFamily:SERIF,fontSize: 28,fontWeight:600,color:C.navy,margin:0,lineHeight:1.2}}>{title}</h1>
+          {sub && <p style={{fontSize: 14,color:C.text2,margin:"6px 0 0"}}>{sub}</p>}
         </div>
         {right}
       </div>
@@ -151,11 +183,11 @@ function PageHeader({title, sub, right}) {
 }
 
 function Card({children, style}) {
-  return <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"16px 20px",...style}}>{children}</div>;
+  return <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"18px 20px",...style}}>{children}</div>;
 }
 
 function SLabel({children}) {
-  return <div style={{fontSize:9.5,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".08em",marginBottom:7}}>{children}</div>;
+  return <h2 style={{fontFamily:SERIF,fontSize: 17,fontWeight:600,color:C.navy,margin:"0 0 12px",lineHeight:1.3}}>{children}</h2>;
 }
 
 // Recherche tolerante aux espaces : on normalise les blancs (espaces, tabs,
@@ -313,6 +345,9 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const onPubChange = v => { setPubDate(v); if (!deadlineManual) setDeadline(computeDeadline(v)); };
   const recalcDeadline = () => { setDeadline(computeDeadline(pubDate)); setDeadlineManual(false); };
   const [phase, setPhase] = useState("idle");
+  // Analyse lancée ou résultats prêts : remonter en haut de la zone, où s'affichent la progression puis le résumé.
+  const zoneRef = useRef(null);
+  useEffect(() => { if ((phase === "results" || phase === "loading") && zoneRef.current) zoneRef.current.scrollTo({ top: 0, behavior: "smooth" }); }, [phase]);
   const [loadStep, setLoadStep] = useState(0);
   const [corrections, setCorrections] = useState([]);
   const [synthese, setSynthese] = useState("");
@@ -823,76 +858,81 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       <PageHeader
         title={cfg.title}
         sub={cfg.sub}
-        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2,display:"flex",alignItems:"center",gap:5}}><span style={{width:6,height:6,borderRadius:"50%",background:C.green,display:"inline-block"}}/>{consignes.length} consignes actives</span>}
+        right={<span style={{fontSize: 13,padding:"6px 12px",background:C.greenLight,borderRadius:999,color:C.green,display:"flex",alignItems:"center",gap:7}}><Icon n="bouclier" size={14}/>{consignes.length} consignes actives</span>}
       />
 
-      {error && <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf0f0",border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12.5,color:C.red}}>{error}</div>}
+      {error && <div role="alert" style={{margin:"16px 36px 0",padding:"11px 16px",background:C.redLight,border:`1px solid ${C.redLine}`,borderRadius:8,fontSize: 13.5,color:C.red}}>{error}</div>}
       {cfg.letters && !consignes.some(c => c && c.active !== false && ["lettre_ar","lettre_fr","lettres"].includes(c.doctype)) && (
-        <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:8,fontSize:12.5,color:C.text}}>
+        <div style={{margin:"16px 36px 0",padding:"11px 16px",background:C.amberLight,border:`1px solid ${C.amberLine}`,borderRadius:8,fontSize: 13.5,color:C.text}}>
           Aucune consigne de lettre n'est chargée : seuls le modèle et les contrôles de dates s'appliqueront. Importez le fichier de consignes des lettres (Fiches de consignes · Importer JSON · Enregistrer sur le serveur), puis rechargez la page.
         </div>
       )}
 
       {cfg.rapport && (
-        <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:8,fontSize:12,color:C.text,lineHeight:1.55}}>
-          Rapport confidentiel : avant l'envoi au modèle d'Anthropic, les noms des sociétés et des personnes, les adresses et les numéros d'immatriculation sont remplacés par des codes dans votre navigateur, et remis en clair dans le résultat : le modèle ne reçoit jamais le rapport réel. Vérifiez la liste avant de lancer l'analyse. Les chiffres, les dates et les marques non cochées restent lisibles.
+        <div role="note" style={{margin:"16px 36px 0",display:"flex",gap:12,alignItems:"flex-start",padding:"13px 16px",background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,fontSize: 13.5,color:"#2E3646",lineHeight:1.55}}>
+          <Icon n="cadenas" size={19} stroke={1.8} style={{color:C.navy,marginTop:1}}/>
+          <div>Rapport confidentiel : avant l'envoi au modèle d'Anthropic, les noms des sociétés et des personnes, les adresses et les numéros d'immatriculation sont remplacés par des codes dans votre navigateur, et remis en clair dans le résultat : le modèle ne reçoit jamais le rapport réel. Vérifiez la liste avant de lancer l'analyse. Les chiffres, les dates et les marques non cochées restent lisibles.</div>
         </div>
       )}
 
-      <div style={{flex:1,overflowY:"auto",padding:"20px 30px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,alignItems:"start"}}>
+      <div ref={zoneRef} style={{flex:1,overflowY:"auto",padding:"20px 36px 36px",display:"grid",gridTemplateColumns:"minmax(320px,420px) minmax(0,1fr)",gap:20,alignItems:"start"}}>
         {/* Gauche */}
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <Card>
-            <SLabel>Document à corriger</SLabel>
+            <SLabel>{cfg.rapport ? "1 · Document" : "Document à corriger"}</SLabel>
             <div
+              role="button" tabIndex={0}
               onClick={() => fileRef.current.click()}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileRef.current.click(); } }}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
-              style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?"#edf2ff":C.cream2,borderRadius:8,padding:"22px 16px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+              style={{border:`1.5px dashed ${fileName?C.navy2:C.border2}`,background:fileName?C.blueLight:C.cream,borderRadius:8,padding:"22px 16px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
             >
-              <div style={{fontSize:26,marginBottom:7}}>📄</div>
-              <div style={{fontSize:12.5,fontWeight:500,color:C.text}}>{fileName || "Déposer le fichier ici"}</div>
-              <div style={{fontSize:11,color:C.text3,marginTop:3}}>Word (.docx) — FR ou AR · les anciens .doc sont à convertir</div>
-              {!fileName && cfg.allowDemo && <div style={{fontSize:10.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
+              <div style={{display:"flex",justifyContent:"center",color:C.navy,marginBottom:8}}><Icon n="doc" size={30} stroke={1.5}/></div>
+              <div style={{fontSize: 14,fontWeight:500,color:C.text,wordBreak:"break-word"}}>{fileName || "Déposer le fichier ici ou cliquer pour le choisir"}</div>
+              <div style={{fontSize: 12.5,color:C.text3,marginTop:4}}>{cfg.rapport ? "Word (.docx) en français" : "Word (.docx) en français ou en arabe"} · les anciens .doc sont à convertir</div>
+              {!fileName && cfg.allowDemo && <div style={{fontSize: 12.5,color:C.text3,marginTop:5,fontStyle:"italic"}}>Sans fichier : document de démonstration utilisé</div>}
             </div>
             <input ref={fileRef} type="file" accept=".docx,.doc,.pdf,.txt" style={{display:"none"}} onChange={e => handleFile(e.target.files[0])} />
           </Card>
 
+          {!cfg.rapport && (
           <Card>
             <SLabel>Type de document</SLabel>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
               {cfg.docTypes.map(([id,label,sub]) => (
                 <div key={id} onClick={() => setDocType(id)} style={{padding:"8px 12px",border:`1px solid ${docType===id?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:docType===id?C.navy2:"#fff",color:docType===id?"#fff":C.text,transition:"all .15s"}}>
-                  <div style={{fontSize:12,fontWeight:500}}>{label}</div>
-                  <div style={{fontSize:10,opacity:.6,marginTop:2}}>{sub}</div>
+                  <div style={{fontSize:13,fontWeight:500}}>{label}</div>
+                  <div style={{fontSize:11,opacity:.6,marginTop:2}}>{sub}</div>
                 </div>
               ))}
             </div>
           </Card>
+          )}
 
           {hasDates && (
           <Card>
             <SLabel>Dates du communiqué</SLabel>
-            <div onClick={() => setDateOn(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${dateOn?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:dateOn?"#f0f4ff":"#fff",marginBottom:dateOn?8:0,transition:"all .15s"}}>
+            <div onClick={() => setDateOn(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${dateOn?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:dateOn?C.blueLight:"#fff",marginBottom:dateOn?8:0,transition:"all .15s"}}>
               <div style={{width:15,height:15,border:`1.5px solid ${dateOn?C.navy2:C.border2}`,borderRadius:4,background:dateOn?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 {dateOn && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
               </div>
               <div>
-                <div style={{fontSize:12,fontWeight:500,color:C.text}}>Insérer ou rectifier les dates</div>
-                <div style={{fontSize:10,color:C.text3,marginTop:1}}>« Fait à Rabat, le… » et « soit le… », en suivi des modifications</div>
+                <div style={{fontSize:13,fontWeight:500,color:C.text}}>Insérer ou rectifier les dates</div>
+                <div style={{fontSize:11,color:C.text3,marginTop:1}}>« Fait à Rabat, le… » et « soit le… », en suivi des modifications</div>
               </div>
             </div>
             {dateOn && (
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div>
-                  <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date de publication</div>
-                  <input type="date" value={pubDate} onChange={e => onPubChange(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:12,color:C.text,boxSizing:"border-box"}}/>
-                  <div style={{fontSize:10,marginTop:3,color:pubDate && !isThursday(pubDate)?C.amber:C.text3}}>{formatLongFR(pubDate)}{pubDate && !isThursday(pubDate) ? " · ce n'est pas un jeudi" : ""}</div>
+                  <div style={{fontSize:11.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date de publication</div>
+                  <input type="date" value={pubDate} onChange={e => onPubChange(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:13,color:C.text,boxSizing:"border-box"}}/>
+                  <div style={{fontSize:11,marginTop:3,color:pubDate && !isThursday(pubDate)?C.amber:C.text3}}>{formatLongFR(pubDate)}{pubDate && !isThursday(pubDate) ? " · ce n'est pas un jeudi" : ""}</div>
                 </div>
                 <div>
-                  <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date limite des observations</div>
-                  <input type="date" value={deadline} onChange={e => { setDeadline(e.target.value); setDeadlineManual(true); }} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:12,color:C.text,boxSizing:"border-box"}}/>
-                  <div style={{fontSize:10,marginTop:3,color:C.text3}}>
+                  <div style={{fontSize:11.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date limite des observations</div>
+                  <input type="date" value={deadline} onChange={e => { setDeadline(e.target.value); setDeadlineManual(true); }} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:13,color:C.text,boxSizing:"border-box"}}/>
+                  <div style={{fontSize:11,marginTop:3,color:C.text3}}>
                     {formatLongFR(deadline)}{" · "}
                     {deadlineManual
                       ? <span onClick={recalcDeadline} style={{color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>recalculer</span>
@@ -907,32 +947,32 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
           {cfg.letters && (
           <Card>
             <SLabel>Envoi et contrôles</SLabel>
-            <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date d'envoi prévue</div>
-            <input type="date" value={envoi} onChange={e => setEnvoi(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:12,color:C.text,boxSizing:"border-box"}}/>
-            <div style={{fontSize:10,marginTop:3,color:envoi && ([0,6].includes(weekday(envoi)) || holidayOn(envoi))?C.amber:C.text3}}>
+            <div style={{fontSize:11.5,fontWeight:500,color:C.text2,marginBottom:4}}>Date d'envoi prévue</div>
+            <input type="date" value={envoi} onChange={e => setEnvoi(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:13,color:C.text,boxSizing:"border-box"}}/>
+            <div style={{fontSize:11,marginTop:3,color:envoi && ([0,6].includes(weekday(envoi)) || holidayOn(envoi))?C.amber:C.text3}}>
               {formatLongFR(envoi)}{envoi && [0,6].includes(weekday(envoi)) ? " · week-end" : ""}{envoi && holidayOn(envoi) ? ` · jour férié (${holidayOn(envoi).nom})` : ""}
             </div>
-            <div style={{fontSize:10.5,color:C.text3,lineHeight:1.5,margin:"8px 0"}}>
+            <div style={{fontSize:11.5,color:C.text3,lineHeight:1.5,margin:"8px 0"}}>
               Contrôlés à partir de cette date : convocation au moins {DELAI_AUDITION_LEGAL} jours avant l'audition (décret n° 2.14.652, art. 18), réponse au moins {DELAI_REPONSE_MIN} jours après l'envoi, jamais un week-end ni un jour férié, références antérieures à l'envoi.
             </div>
-            <div onClick={() => setVerifierEnLigne(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${verifierEnLigne?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:verifierEnLigne?"#f0f4ff":"#fff",transition:"all .15s"}}>
+            <div onClick={() => setVerifierEnLigne(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${verifierEnLigne?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:verifierEnLigne?C.blueLight:"#fff",transition:"all .15s"}}>
               <div style={{width:15,height:15,border:`1.5px solid ${verifierEnLigne?C.navy2:C.border2}`,borderRadius:4,background:verifierEnLigne?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 {verifierEnLigne && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
               </div>
               <div>
-                <div style={{fontSize:12,fontWeight:500,color:C.text}}>Vérifier en ligne les dénominations</div>
-                <div style={{fontSize:10,color:C.text3,marginTop:1}}>Intitulés des ministères et organismes, qualité des destinataires · 3 recherches au plus, sources citées</div>
+                <div style={{fontSize:13,fontWeight:500,color:C.text}}>Vérifier en ligne les dénominations</div>
+                <div style={{fontSize:11,color:C.text3,marginTop:1}}>Intitulés des ministères et organismes, qualité des destinataires · 3 recherches au plus, sources citées</div>
               </div>
             </div>
             {docType === "lettre_ar" && (
               <div style={{marginTop:10}}>
-                <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:4}}>Destinataire (formules de politesse)</div>
-                <select value={destinataire} onChange={e => setDestinataire(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:12,color:C.text,background:"#fff"}}>
+                <div style={{fontSize:11.5,fontWeight:500,color:C.text2,marginBottom:4}}>Destinataire (formules de politesse)</div>
+                <select value={destinataire} onChange={e => setDestinataire(e.target.value)} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:13,color:C.text,background:"#fff"}}>
                   <option value="auto">Détection automatique</option>
                   <option value="public">Ministre ou dirigeant d'établissement public</option>
                   <option value="autre">Autre (société, association, avocat…)</option>
                 </select>
-                <div style={{fontSize:10,color:C.text3,marginTop:3,lineHeight:1.5}}>
+                <div style={{fontSize:11,color:C.text3,marginTop:3,lineHeight:1.5}}>
                   {categorie ? `Catégorie retenue : ${categorie === "public" ? "ministre ou dirigeant d'établissement public" : "autre destinataire"}.` : phase === "done" && destinataire === "auto" ? "Catégorie non reconnue : choisissez-la pour appliquer les formules." : "Public : « الفاضل المحترم », « أحيط سيادتكم علما », « أطلب منكم التفضل مشكورين ». Autre : « أحيطكم علما », « أطلب من سيادتكم »."}
                 </div>
               </div>
@@ -942,17 +982,25 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
           {cfg.rapport && fileContent && (
           <Card>
-            <SLabel>Noms remplacés avant l'envoi</SLabel>
-            <div onClick={() => setPseudoOn(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${pseudoOn?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:pseudoOn?"#f0f4ff":"#fff",marginBottom:8,transition:"all .15s"}}>
+            <SLabel>2 · Noms remplacés avant l'envoi</SLabel>
+            <div onClick={() => setPseudoOn(v => !v)} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${pseudoOn?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:pseudoOn?C.blueLight:"#fff",marginBottom:8,transition:"all .15s"}}>
               <div style={{width:15,height:15,border:`1.5px solid ${pseudoOn?C.navy2:C.border2}`,borderRadius:4,background:pseudoOn?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 {pseudoOn && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
               </div>
               <div>
-                <div style={{fontSize:12,fontWeight:500,color:C.text}}>Remplacer les noms des sociétés et des personnes</div>
-                <div style={{fontSize:10,color:C.text3,marginTop:1}}>Avec les adresses et les numéros d'immatriculation. Le modèle ne voit que des codes ([SOC_1], [PERS_2], [ADR_3]…) ; les vrais noms sont remis dans le rapport relu</div>
+                <div style={{fontSize:13,fontWeight:500,color:C.text}}>Remplacer les noms des sociétés et des personnes</div>
+                <div style={{fontSize:11,color:C.text3,marginTop:1}}>Avec les adresses et les numéros d'immatriculation. Le modèle ne voit que des codes ([SOC_1], [PERS_2], [ADR_3]…) ; les vrais noms sont remis dans le rapport relu</div>
               </div>
             </div>
             {pseudoOn && (<>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:6,marginBottom:12}}>
+                {[["SOC","sociétés"],["PERS","personnes"],["ADR","adresses"],["ID","numéros"]].map(([t,l]) => (
+                  <div key={t} style={{background:C.cream,borderRadius:6,padding:"8px 10px"}}>
+                    <div style={{fontSize: 20,fontWeight:600,color:C.navy,lineHeight:1.2}}>{noms.filter(e => e.type === t && e.coche).length}</div>
+                    <div style={{fontSize: 12,color:C.text2}}>{l}</div>
+                  </div>
+                ))}
+              </div>
               {[["SOC","Sociétés et groupes","Le nom distinctif est remplacé ; « SA », « Groupe », « Maroc »… restent lisibles."],["PERS","Personnes","Prénoms et noms."],["ADR","Adresses","Numéro, voie, code postal, quartier et ville."],["ID","Numéros d'immatriculation","Registre du commerce, ICE, identifiant fiscal…"],["NOM","Autres noms propres repérés","Marques, lieux, concurrents cités dans les tableaux… Cochez ceux qui sont des sociétés ou des personnes."]].map(([type,titre,aide]) => {
                 const liste = noms.filter(e => e.type === type);
                 if (!liste.length) return null;
@@ -960,14 +1008,15 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 return (
                   <div key={type} style={{marginBottom:8}}>
                     <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:3}}>
-                      <span style={{fontSize:11,fontWeight:500,color:C.text2}}>{titre} · {coches} sur {liste.length}</span>
-                      <span onClick={() => setNoms(ns => ns.map(e => e.type === type ? { ...e, coche: coches < liste.length } : e))} style={{fontSize:10,color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>{coches < liste.length ? "tout cocher" : "tout décocher"}</span>
+                      <span style={{fontSize:12,fontWeight:500,color:C.text2}}>{titre} · {coches} sur {liste.length}</span>
+                      <span onClick={() => setNoms(ns => ns.map(e => e.type === type ? { ...e, coche: coches < liste.length } : e))} style={{fontSize:11,color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>{coches < liste.length ? "tout cocher" : "tout décocher"}</span>
                     </div>
-                    <div style={{fontSize:10,color:C.text3,marginBottom:4}}>{aide}</div>
+                    <div style={{fontSize:11,color:C.text3,marginBottom:4}}>{aide}</div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:4,maxHeight:type === "NOM" ? 120 : 160,overflowY:"auto"}}>
                       {liste.map(e => (
-                        <span key={e.cle} title={e.formes.map(f => `${f.forme} (${f.n})`).join(" · ")} onClick={() => setNoms(ns => ns.map(x => x.cle === e.cle ? { ...x, coche: !x.coche } : x))}
-                          style={{fontSize:10.5,padding:"2px 7px",borderRadius:12,cursor:"pointer",border:`1px solid ${e.coche?C.navy2:C.border2}`,background:e.coche?"#e6edff":"#fff",color:e.coche?C.navy2:C.text3,textDecoration:e.coche?"none":"line-through"}}>
+                        <span key={e.cle} role="checkbox" aria-checked={e.coche} tabIndex={0} title={e.formes.map(f => `${f.forme} (${f.n})`).join(" · ")} onClick={() => setNoms(ns => ns.map(x => x.cle === e.cle ? { ...x, coche: !x.coche } : x))}
+                          onKeyDown={ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setNoms(ns => ns.map(x => x.cle === e.cle ? { ...x, coche: !x.coche } : x)); } }}
+                          style={{fontSize: 12.5,padding:"3px 10px",borderRadius:999,cursor:"pointer",border:`1px solid ${e.coche?"transparent":C.border}`,background:e.coche?C.blueLight:"#fff",color:e.coche?C.navy:C.text3,textDecoration:e.coche?"none":"line-through"}}>
                           {e.libelle} <span style={{opacity:.6}}>{e.n}</span>
                         </span>
                       ))}
@@ -975,46 +1024,46 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                   </div>
                 );
               })}
-              <div style={{fontSize:10.5,fontWeight:500,color:C.text2,margin:"6px 0 3px"}}>Ajouter un nom oublié (un par ligne)</div>
-              <textarea value={ajoutsNoms} onChange={e => setAjoutsNoms(e.target.value)} rows={2} placeholder={"Ex. : Sothema\nnuméro de registre du commerce"} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:11.5,color:C.text,boxSizing:"border-box",resize:"vertical"}}/>
+              <div style={{fontSize:11.5,fontWeight:500,color:C.text2,margin:"6px 0 3px"}}>Ajouter un nom oublié (un par ligne)</div>
+              <textarea value={ajoutsNoms} onChange={e => setAjoutsNoms(e.target.value)} rows={2} placeholder={"Ex. : Sothema\nnuméro de registre du commerce"} style={{width:"100%",padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontFamily:"inherit",fontSize:12.5,color:C.text,boxSizing:"border-box",resize:"vertical"}}/>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
-                <span style={{fontSize:10,color:tablePseudo && tablePseudo.collision ? C.red : C.text3}}>{tablePseudo ? (tablePseudo.collision ? "Le rapport contient déjà des codes entre crochets : remplacement impossible." : `${tablePseudo.nombre} élément(s) remplacé(s)`) : ""}</span>
-                <span onClick={() => setApercu(v => !v)} style={{fontSize:10.5,color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>{apercu ? "Masquer le texte envoyé" : "Voir le texte envoyé"}</span>
+                <span style={{fontSize:11,color:tablePseudo && tablePseudo.collision ? C.red : C.text3}}>{tablePseudo ? (tablePseudo.collision ? "Le rapport contient déjà des codes entre crochets : remplacement impossible." : `${tablePseudo.nombre} élément(s) remplacé(s)`) : ""}</span>
+                <span onClick={() => setApercu(v => !v)} style={{fontSize:11.5,color:C.navy2,textDecoration:"underline",cursor:"pointer"}}>{apercu ? "Masquer le texte envoyé" : "Voir le texte envoyé"}</span>
               </div>
               {apercu && tablePseudo && (
-                <pre style={{marginTop:6,maxHeight:220,overflowY:"auto",whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:10.5,lineHeight:1.5,color:C.text2,background:C.cream2,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px"}}>{pseudonymiser(texteRapport.slice(0, 6000), tablePseudo)}{texteRapport.length > 6000 ? "\n…" : ""}</pre>
+                <pre style={{marginTop:6,maxHeight:220,overflowY:"auto",whiteSpace:"pre-wrap",fontFamily:"inherit",fontSize:11.5,lineHeight:1.5,color:C.text2,background:C.cream2,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 10px"}}>{pseudonymiser(texteRapport.slice(0, 6000), tablePseudo)}{texteRapport.length > 6000 ? "\n…" : ""}</pre>
               )}
             </>)}
           </Card>
           )}
 
           <Card>
-            <SLabel>{cfg.rapport ? "Relectures" : "Options de correction"}</SLabel>
+            <SLabel>{cfg.rapport ? `${fileContent ? 3 : 2} · Relectures` : "Options de correction"}</SLabel>
             {cfg.rapport && [["langue","Langue","Orthographe, grammaire, syntaxe, ponctuation · suivi des modifications"],["coherence","Cohérence","Contradictions de faits, erreurs de chiffres, renvois, omissions importantes · commentaires Word"]].map(([k,label,sub]) => (
-              <div key={k} onClick={() => setOptsR(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${optsR[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:optsR[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
+              <div key={k} onClick={() => setOptsR(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${optsR[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:optsR[k]?C.blueLight:"#fff",marginBottom:5,transition:"all .15s"}}>
                 <div style={{width:15,height:15,border:`1.5px solid ${optsR[k]?C.navy2:C.border2}`,borderRadius:4,background:optsR[k]?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {optsR[k] && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
                 </div>
                 <div>
-                  <div style={{fontSize:12,fontWeight:500,color:C.text}}>{label}</div>
-                  <div style={{fontSize:10,color:C.text3,marginTop:1}}>{sub}</div>
+                  <div style={{fontSize:13,fontWeight:500,color:C.text}}>{label}</div>
+                  <div style={{fontSize:11,color:C.text3,marginTop:1}}>{sub}</div>
                 </div>
               </div>
             ))}
-            {cfg.rapport && fileContent && <div style={{fontSize:10,color:C.text3,margin:"2px 0 4px"}}>{decouper(fileContent + "\n" + notes.flatMap(n => n.paras).join("\n")).length} partie(s) à relire pour la langue · {Math.round(fileContent.length / 1000)} 000 caractères{notes.length ? ` et ${notes.length} notes de bas de page` : ""}</div>}
+            {cfg.rapport && fileContent && <div style={{fontSize:11,color:C.text3,margin:"2px 0 4px"}}>{decouper(fileContent + "\n" + notes.flatMap(n => n.paras).join("\n")).length} partie(s) à relire pour la langue · {Math.round(fileContent.length / 1000)} 000 caractères{notes.length ? ` et ${notes.length} notes de bas de page` : ""}</div>}
             {!cfg.rapport && [["forme","Corrections de forme","Orthographe, syntaxe, typographie"],["fond","Corrections de fond","Qualification juridique, structure"],["terminologie","Terminologie consacrée","Termes loi n°104-12"]].map(([k,label,sub]) => (
-              <div key={k} onClick={() => setOpts(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${opts[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:opts[k]?"#f0f4ff":"#fff",marginBottom:5,transition:"all .15s"}}>
+              <div key={k} onClick={() => setOpts(o => ({...o,[k]:!o[k]}))} style={{display:"flex",alignItems:"center",gap:9,padding:"7px 10px",border:`1px solid ${opts[k]?C.navy2:C.border}`,borderRadius:7,cursor:"pointer",background:opts[k]?C.blueLight:"#fff",marginBottom:5,transition:"all .15s"}}>
                 <div style={{width:15,height:15,border:`1.5px solid ${opts[k]?C.navy2:C.border2}`,borderRadius:4,background:opts[k]?C.navy2:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   {opts[k] && <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3 5.5L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round"/></svg>}
                 </div>
                 <div>
-                  <div style={{fontSize:12,fontWeight:500,color:C.text}}>{label}</div>
-                  <div style={{fontSize:10,color:C.text3,marginTop:1}}>{sub}</div>
+                  <div style={{fontSize:13,fontWeight:500,color:C.text}}>{label}</div>
+                  <div style={{fontSize:11,color:C.text3,marginTop:1}}>{sub}</div>
                 </div>
               </div>
             ))}
-            <button onClick={analyze} disabled={phase==="loading"} style={{width:"100%",marginTop:9,padding:"9px",border:"none",borderRadius:7,background:phase==="loading"?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:phase==="loading"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-              {phase==="loading" ? <><Spinner/><span>Analyse en cours…</span></> : <><span>🔍</span><span>Analyser et corriger</span></>}
+            <button onClick={analyze} disabled={phase==="loading"} style={{width:"100%",marginTop:12,minHeight:48,padding:"10px",border:"none",borderRadius:6,background:phase==="loading"?"#8B93A3":C.navy,color:"#fff",fontSize: 15,fontWeight:600,cursor:phase==="loading"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+              {phase==="loading" ? <><Spinner/><span>Analyse en cours…</span></> : <span>Analyser et corriger</span>}
             </button>
           </Card>
         </div>
@@ -1022,9 +1071,9 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
         {/* Droite */}
         <div>
           {phase==="idle" && (
-            <Card style={{textAlign:"center",padding:"44px 20px"}}>
-              <div style={{fontSize:34,marginBottom:10,opacity:.25}}>📋</div>
-              <p style={{fontSize:12.5,color:C.text3,lineHeight:1.6}}>Chargez un document et lancez l'analyse<br/>pour voir les corrections suggérées</p>
+            <Card style={{textAlign:"center",padding:"52px 24px"}}>
+              <div style={{display:"flex",justifyContent:"center",color:C.border2,marginBottom:12}}><Icon n="liste" size={40} stroke={1.4}/></div>
+              <p style={{fontSize: 14,color:C.text3,lineHeight:1.6,margin:0}}>Chargez un document et lancez l'analyse<br/>pour voir les corrections suggérées</p>
             </Card>
           )}
 
@@ -1034,12 +1083,12 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 <Spinner/>
                 {progress.total > 0 && (
                   <div style={{width:"100%",maxWidth:300}}>
-                    <div style={{fontSize:11.5,color:C.navy2,marginBottom:5}}>Langue : partie {Math.min(progress.faits + 1, progress.total)} sur {progress.total}{progress.faits === progress.total ? " · terminé" : ""}</div>
+                    <div style={{fontSize:12.5,color:C.navy2,marginBottom:5}}>Langue : partie {Math.min(progress.faits + 1, progress.total)} sur {progress.total}{progress.faits === progress.total ? " · terminé" : ""}</div>
                     <div style={{height:6,background:C.cream3,borderRadius:3,overflow:"hidden"}}><div style={{height:"100%",width:`${Math.round(100 * progress.faits / progress.total)}%`,background:C.navy2,transition:"width .4s"}}/></div>
                   </div>
                 )}
-                {progress.coherence && <div style={{fontSize:11.5,color:progress.coherence === "échec" ? C.red : C.navy2}}>Cohérence du rapport entier : {progress.coherence}</div>}
-                <div style={{fontSize:10.5,color:C.text3,textAlign:"center",lineHeight:1.5}}>Un long rapport demande plusieurs minutes. Gardez cette page ouverte.</div>
+                {progress.coherence && <div style={{fontSize:12.5,color:progress.coherence === "échec" ? C.red : C.navy2}}>Cohérence du rapport entier : {progress.coherence}</div>}
+                <div style={{fontSize:11.5,color:C.text3,textAlign:"center",lineHeight:1.5}}>Un long rapport demande plusieurs minutes. Gardez cette page ouverte.</div>
               </div>
             </Card>
           )}
@@ -1050,7 +1099,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 <Spinner/>
                 <div style={{display:"flex",flexDirection:"column",gap:7,width:"100%",maxWidth:240}}>
                   {steps.map((s,i) => (
-                    <div key={i} style={{fontSize:11.5,color:i<loadStep?C.green:i===loadStep?C.navy2:C.text3,display:"flex",alignItems:"center",gap:7,fontWeight:i===loadStep?500:400,transition:"color .3s"}}>
+                    <div key={i} style={{fontSize:12.5,color:i<loadStep?C.green:i===loadStep?C.navy2:C.text3,display:"flex",alignItems:"center",gap:7,fontWeight:i===loadStep?500:400,transition:"color .3s"}}>
                       <span style={{width:6,height:6,borderRadius:"50%",background:i<loadStep?C.green:i===loadStep?C.navy2:C.cream3,flexShrink:0}}/>
                       {s}
                     </div>
@@ -1061,25 +1110,25 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
           )}
 
           {phase==="results" && (
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
               <Card>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                  <div style={{fontSize:13,fontWeight:500,color:C.navy2}}>Résumé de l'analyse</div>
-                  {score != null && <span style={{background:score>=7?C.greenLight:C.amberLight,color:score>=7?C.green:C.amber,padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>Score : {score}/10</span>}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:14}}>
+                  <h2 style={H2}>Résumé de l'analyse</h2>
+                  {!cfg.rapport && score != null && <span style={{background:score>=7?C.greenLight:C.amberLight,color:score>=7?C.green:C.amber,padding:"4px 11px",borderRadius:999,fontSize: 13,fontWeight:600}}>Score : {score}/10</span>}
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:7,marginBottom:12}}>
+                <div style={{display:"grid",gridTemplateColumns:`repeat(${cfg.rapport ? 3 : 4},minmax(0,1fr))`,gap:12,marginBottom:14}}>
                   {(cfg.rapport
-                    ? [["Langue",corrections.length,"#2563eb"],["Importantes",observations.filter(o=>o.gravite==="importante").length,C.red],["À vérifier",observations.filter(o=>o.gravite!=="importante").length,C.amber],["Observations",observations.length,C.navy]]
-                    : [["Forme",corrections.filter(c=>c.type==="forme").length,"#2563eb"],["Fond",corrections.filter(c=>c.type==="fond").length,C.amber],["Terminol.",corrections.filter(c=>c.type==="terminologie"||c.type==="bilingue").length,C.green],["Score",score+"/10",C.navy]]).map(([label,val,color]) => (
-                    <div key={label} style={{background:C.cream2,borderRadius:7,padding:"10px 8px",textAlign:"center"}}>
-                      <div style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:600,color}}>{val}</div>
-                      <div style={{fontSize:9.5,color:C.text2,marginTop:2,textTransform:"uppercase",letterSpacing:".04em"}}>{label}</div>
+                    ? [["corrections de langue",corrections.length,C.navy],["observations importantes",observations.filter(o=>o.gravite==="importante").length,C.red],["points à vérifier",observations.filter(o=>o.gravite!=="importante").length,C.amber]]
+                    : [["forme",corrections.filter(c=>c.type==="forme").length,C.navy],["fond",corrections.filter(c=>c.type==="fond").length,C.amber],["terminologie",corrections.filter(c=>c.type==="terminologie"||c.type==="bilingue").length,C.green],["score",score+"/10",C.navy]]).map(([label,val,color]) => (
+                    <div key={label}>
+                      <div style={{fontSize: 28,fontWeight:600,color,lineHeight:1.15}}>{val}</div>
+                      <div style={{fontSize: 13,color:C.text2,marginTop:2}}>{label}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{fontSize:11.5,color:C.text2,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>{synthese}</div>
+                <div style={{fontSize: 13.5,color:C.text2,lineHeight:1.6,padding:"10px 12px",background:C.cream,borderRadius:6}}>{synthese}</div>
                 {grille && (grille.societes.length > 0 || grille.sens.length > 0) && (
-                  <details style={{marginTop:8,fontSize:11.5,color:C.text2}}>
+                  <details style={{marginTop:8,fontSize:12.5,color:C.text2}}>
                     <summary style={{cursor:"pointer",color:C.navy2,fontWeight:500}}>Grille de relecture ({grille.societes.length} société(s), {grille.sens.length} fait(s) vérifié(s))</summary>
                     <div style={{marginTop:6,lineHeight:1.6}}>
                       {grille.societes.map((g, i) => {
@@ -1091,18 +1140,14 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                     </div>
                   </details>
                 )}
-                {(appel || cout) && <div style={{marginTop:6,fontSize:10,color:C.text3}}>
-                  {appel ? `Modèle : ${appel.modele}` : ""}
-                  {cout && cout.total != null ? `${appel ? " · " : ""}Coût de l'analyse : ${dollars(cout.total)}` : ""}
-                  {cout && cout.total == null && (cout.langue != null || cout.coherence != null) ? `Coût de l'analyse : ${dollars((cout.langue || 0) + (cout.coherence || 0))} (langue, ${cout.modeleLangue || "?"} : ${cout.langue != null ? dollars(cout.langue) : "non lancée"} · cohérence, Opus 5.5 : ${cout.coherence != null ? dollars(cout.coherence) : "non lancée"})` : ""}
-                </div>}
+                {appel && <div style={{marginTop:8,fontSize: 12,color:C.text3}}>Modèle : {appel.modele}</div>}
               </Card>
 
               {verifications.length > 0 && (
               <Card>
-                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:8}}>Dénominations vérifiées en ligne ({verifications.length})</div>
+                <h2 style={{...H2,marginBottom:10}}>Dénominations vérifiées en ligne ({verifications.length})</h2>
                 {verifications.map((v,i) => (
-                  <div key={i} style={{fontSize:11.5,color:C.text,lineHeight:1.5,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:5,unicodeBidi:"plaintext"}}>
+                  <div key={i} style={{fontSize:12.5,color:C.text,lineHeight:1.5,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:5,unicodeBidi:"plaintext"}}>
                     <span style={{fontWeight:600,color:v.statut==="confirme"?C.green:v.statut==="a_corriger"?C.amber:C.text3}}>{v.statut==="confirme"?"Confirmé":v.statut==="a_corriger"?"À corriger":"Non vérifié"}</span>
                     {" · "}{v.entite}{v.explication ? ` : ${v.explication}` : ""}
                     {v.source_url && <> · <a href={v.source_url} target="_blank" rel="noopener noreferrer" style={{color:C.navy2}}>{v.source_titre || "source"}</a></>}
@@ -1113,36 +1158,34 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
               {warnings.length > 0 && (
               <Card>
-                <div style={{fontSize:13,fontWeight:500,color:C.amber,marginBottom:8,display:"flex",alignItems:"center",gap:6}}><span>⚠️</span> Vérifications structurelles ({warnings.length})</div>
+                <h2 style={{...H2,marginBottom:10,display:"flex",alignItems:"center",gap:8}}><Icon n="alerte" size={18} style={{color:C.amber}}/>Vérifications structurelles ({warnings.length})</h2>
                 {warnings.map((w,i) => (
-                  <div key={i} style={{fontSize:11.5,color:C.text,lineHeight:1.5,padding:"8px 11px",background:"#fdf6e9",border:`1px solid ${C.amber}`,borderRadius:6,marginBottom:6,unicodeBidi:"plaintext"}}>{w.message}</div>
+                  <div key={i} style={{fontSize: 13.5,color:C.text,lineHeight:1.55,padding:"10px 13px",background:C.amberLight,border:`1px solid ${C.amberLine}`,borderRadius:6,marginBottom:8,unicodeBidi:"plaintext"}}>{w.message}</div>
                 ))}
-                <div style={{fontSize:10.5,color:C.text3,fontStyle:"italic",marginTop:2}}>Signalements pour relecture, sans correction automatique du fichier.</div>
+                <div style={{fontSize:11.5,color:C.text3,fontStyle:"italic",marginTop:2}}>Signalements pour relecture, sans correction automatique du fichier.</div>
               </Card>
               )}
 
               {cfg.rapport && observations.length > 0 && (
               <Card>
-                <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:4}}>Observations de cohérence ({observations.length})</div>
-                <div style={{fontSize:10.5,color:C.text3,marginBottom:9}}>Chaque observation gardée devient un commentaire dans la marge du fichier Word, sur le paragraphe cité. Le texte n'est pas modifié.</div>
+                <h2 style={{...H2,marginBottom:4}}>Observations de cohérence ({observations.length})</h2>
+                <p style={{fontSize: 13,color:C.text3,margin:"0 0 12px"}}>Chaque observation gardée devient un commentaire dans la marge du fichier Word, sur le paragraphe cité. Le texte n'est pas modifié.</p>
                 {observations.map((o,i) => {
-                  const st = obsStatus[i];
+                  const ecartee = obsStatus[i] === "rejected";
+                  const imp = o.gravite === "importante";
                   return (
-                    <div key={i} style={{padding:"10px 12px",border:`1px solid ${C.border}`,borderLeft:`3px solid ${o.gravite==="importante"?C.red:C.amber}`,borderRadius:8,marginBottom:6,background:st==="rejected"?C.redLight:"#fff",opacity:st==="rejected"?.4:1}}>
-                      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:5}}>
-                        <span style={{fontSize:9.5,fontWeight:600,color:o.gravite==="importante"?C.red:C.amber,textTransform:"uppercase",letterSpacing:".04em"}}>{o.gravite==="importante"?"Important":"À vérifier"}</span>
-                        <span style={{fontSize:9.5,color:C.text3}}>· {CAT_OBS[o.categorie] || "Observation"}</span>
-                        {o.source === "regle" && <span style={{fontSize:9.5,color:C.green}}>· contrôle automatique</span>}
-                        {!o.localise && <span style={{fontSize:9.5,color:C.text3}}>· passage non localisé</span>}
+                    <article key={i} style={{padding:"12px 14px",border:`1px solid ${imp?C.redLine:C.amberLine}`,borderRadius:6,marginBottom:10,background:imp?C.redLight:C.amberLight,opacity:ecartee?.45:1,transition:"opacity .2s"}}>
+                      <div style={{fontSize: 12,fontWeight:600,letterSpacing:".04em",textTransform:"uppercase",color:imp?C.red:C.amber}}>
+                        {imp?"Important":"À vérifier"} · {CAT_OBS[o.categorie] || "Observation"}{o.source === "regle" ? " · contrôle automatique" : ""}{!o.localise ? " · passage non localisé" : ""}
                       </div>
-                      <div style={{fontSize:12,color:C.text,lineHeight:1.55}}>{o.observation}</div>
-                      <div dir="auto" style={{fontSize:11,color:C.text2,marginTop:5,fontStyle:"italic",unicodeBidi:"plaintext"}}>« {o.extrait} »</div>
-                      {o.extrait_lie && <div dir="auto" style={{fontSize:11,color:C.text2,marginTop:2,fontStyle:"italic",unicodeBidi:"plaintext"}}>Passage lié : « {o.extrait_lie} »</div>}
-                      <div style={{display:"flex",gap:5,marginTop:7}}>
-                        <button onClick={() => setObsStatus(p => ({...p,[i]:"accepted"}))} style={{padding:"3px 9px",borderRadius:5,border:"1px solid #a7d7b7",background:C.greenLight,color:C.green,fontSize:10.5,fontWeight:500,cursor:"pointer"}}>✓ Garder</button>
-                        <button onClick={() => setObsStatus(p => ({...p,[i]:"rejected"}))} style={{padding:"3px 9px",borderRadius:5,border:"1px solid #f5b7b7",background:C.redLight,color:C.red,fontSize:10.5,fontWeight:500,cursor:"pointer"}}>✗ Écarter</button>
+                      <p style={{fontSize: 14,color:C.text,lineHeight:1.55,margin:"5px 0 6px"}}>{o.observation}</p>
+                      <div dir="auto" style={{fontSize: 13,color:C.text2,fontStyle:"italic",unicodeBidi:"plaintext"}}>« {o.extrait} »</div>
+                      {o.extrait_lie && <div dir="auto" style={{fontSize: 13,color:C.text2,marginTop:3,fontStyle:"italic",unicodeBidi:"plaintext"}}>Passage lié : « {o.extrait_lie} »</div>}
+                      <div style={{display:"flex",gap:8,marginTop:10}}>
+                        <button type="button" aria-pressed={!ecartee} onClick={() => setObsStatus(p => ({...p,[i]:"accepted"}))} style={btnChoix(!ecartee)}>Garder</button>
+                        <button type="button" aria-pressed={ecartee} onClick={() => setObsStatus(p => ({...p,[i]:"rejected"}))} style={btnChoix(ecartee)}>Écarter</button>
                       </div>
-                    </div>
+                    </article>
                   );
                 })}
               </Card>
@@ -1150,31 +1193,32 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
               {(!cfg.rapport || corrections.length > 0) && (
               <Card>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                  <div style={{fontSize:13,fontWeight:500,color:C.navy2}}>{cfg.rapport ? "Corrections de langue" : "Corrections suggérées"} ({corrections.length})</div>
-                  <div style={{display:"flex",gap:5}}>
-                    <button onClick={acceptAll} style={{padding:"4px 9px",borderRadius:5,border:`1px solid ${C.border2}`,background:"#fff",fontSize:10.5,cursor:"pointer",color:C.text2}}>Tout accepter</button>
-                    <button onClick={rejectAll} style={{padding:"4px 9px",borderRadius:5,border:`1px solid ${C.border2}`,background:"#fff",fontSize:10.5,cursor:"pointer",color:C.text2}}>Tout rejeter</button>
+                <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:10}}>
+                  <h2 style={H2}>{cfg.rapport ? "Corrections de langue" : "Corrections suggérées"} ({corrections.length})</h2>
+                  <div style={{display:"flex",gap:8}}>
+                    <button type="button" onClick={acceptAll} style={btnSecondaire}>Tout accepter</button>
+                    <button type="button" onClick={rejectAll} style={btnSecondaire}>Tout rejeter</button>
                   </div>
                 </div>
                 {corrections.map((c,i) => {
-                  const st = statuses[i];
-                  const bl = TYPE_BORDER[c.type] || "#aaa";
+                  const rejetee = statuses[i] === "rejected";
                   return (
-                    <div key={i} style={{padding:"10px 12px",border:`1px solid ${C.border}`,borderLeft:`3px solid ${bl}`,borderRadius:8,marginBottom:6,background:st==="accepted"?C.greenLight:st==="rejected"?C.redLight:"#fff",opacity:st==="rejected"?.4:1,transition:"all .2s"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                        <Badge t={c.type.toUpperCase()} small/>
-                        {c.code && <span style={{fontSize:9.5,color:C.text3,fontFamily:"monospace"}}>{c.code}</span>}
+                    <div key={i} style={{display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",gap:"8px 16px",padding:"11px 0",borderTop:`1px solid ${C.line}`,opacity:rejetee?.45:1,transition:"opacity .2s"}}>
+                      <div style={{minWidth:0,flex:"1 1 320px"}}>
+                        <div style={{display:"flex",flexWrap:"wrap",alignItems:"baseline",gap:"2px 7px"}}>
+                          <span style={{fontSize: 14,color:C.red,textDecoration:"line-through",wordBreak:"break-word"}}>{c.original}</span>
+                          <span aria-hidden="true" style={{color:C.text3}}>→</span>
+                          <span style={{fontSize: 14,color:C.green,fontWeight:500,whiteSpace:"pre-line",wordBreak:"break-word"}}>{c.suggested}</span>
+                        </div>
+                        <div style={{fontSize: 12.5,color:C.text2,marginTop:3,lineHeight:1.5,display:"flex",flexWrap:"wrap",alignItems:"center",gap:6}}>
+                          {!cfg.rapport && c.type && <Badge t={c.type.toUpperCase()} small/>}
+                          {c.code && <span style={{color:C.text3,fontFamily:"monospace"}}>{c.code}</span>}
+                          <span>{c.reason}</span>
+                        </div>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
-                        <span style={{fontSize:11.5,color:C.red,textDecoration:"line-through",fontStyle:"italic"}}>{c.original}</span>
-                        <span style={{fontSize:11,color:C.text3}}>→</span>
-                        <span style={{fontSize:11.5,color:C.green,fontWeight:500,whiteSpace:"pre-line"}}>{c.suggested}</span>
-                      </div>
-                      <div style={{fontSize:10.5,color:C.text2,marginTop:4,lineHeight:1.5}}>{c.reason}</div>
-                      <div style={{display:"flex",gap:5,marginTop:7}}>
-                        <button onClick={() => setStatus(i,"accepted")} style={{padding:"3px 9px",borderRadius:5,border:"1px solid #a7d7b7",background:C.greenLight,color:C.green,fontSize:10.5,fontWeight:500,cursor:"pointer"}}>✓ Accepter</button>
-                        <button onClick={() => setStatus(i,"rejected")} style={{padding:"3px 9px",borderRadius:5,border:"1px solid #f5b7b7",background:C.redLight,color:C.red,fontSize:10.5,fontWeight:500,cursor:"pointer"}}>✗ Rejeter</button>
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        <button type="button" aria-label="Accepter" title="Accepter" aria-pressed={!rejetee} onClick={() => setStatus(i,"accepted")} style={btnIcone(!rejetee,"ok")}><Icon n="ok"/></button>
+                        <button type="button" aria-label="Rejeter" title="Rejeter" aria-pressed={rejetee} onClick={() => setStatus(i,"rejected")} style={btnIcone(rejetee,"non")}><Icon n="non"/></button>
                       </div>
                     </div>
                   );
@@ -1182,31 +1226,31 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
               </Card>
               )}
 
-              <button onClick={downloadWord} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                <span>📥</span> {cfg.rapport ? "Télécharger le rapport relu (.docx)" : "Télécharger Word (.docx) avec corrections"}
+              <button onClick={downloadWord} style={{width:"100%",minHeight:54,padding:"12px",border:"none",borderRadius:8,background:C.gold,color:C.text,fontSize: 15,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+                <Icon n="telecharger" size={18}/> {cfg.rapport ? "Télécharger le rapport relu (.docx)" : "Télécharger Word (.docx) avec corrections"}
               </button>
 
               {cfg.rapport && controleFinal && (
-                <Card style={{borderLeft:`3px solid ${controleFinal.ok ? C.green : C.red}`}}>
-                  <div style={{fontSize:12.5,fontWeight:600,color:controleFinal.ok ? C.green : C.red,marginBottom:6}}>{controleFinal.ok ? "✓ Fichier relu vérifié" : "⚠️ Fichier relu : points à vérifier"}</div>
+                <Card style={{border:`1px solid ${controleFinal.ok ? C.greenLine : C.redLine}`}}>
+                  <div style={{fontSize: 15,fontWeight:600,color:controleFinal.ok ? C.green : C.red,marginBottom:8,display:"flex",alignItems:"center",gap:8}}><Icon n={controleFinal.ok ? "ok" : "alerte"} size={18}/>{controleFinal.ok ? "Fichier relu vérifié" : "Fichier relu : points à vérifier"}</div>
                   {controleFinal.controles.map((c, i) => (
-                    <div key={i} style={{fontSize:11,color:C.text2,lineHeight:1.5,marginBottom:3}}>
-                      <span style={{color:c.ok ? C.green : C.red,marginRight:5}}>{c.ok ? "✓" : "✗"}</span>{c.libelle}
-                      {c.detail && <div style={{fontSize:10.5,color:C.text3,margin:"2px 0 0 16px"}}>{c.detail}</div>}
+                    <div key={i} style={{fontSize: 13.5,color:"#2E3646",lineHeight:1.5,marginBottom:4,display:"flex",gap:8}}>
+                      <Icon n={c.ok ? "ok" : "non"} size={15} style={{color:c.ok ? C.green : C.red,marginTop:3}}/>
+                      <div>{c.libelle}{c.detail && <div style={{fontSize: 12.5,color:C.text3,marginTop:2}}>{c.detail}</div>}</div>
                     </div>
                   ))}
                 </Card>
               )}
 
               {notApplied.length > 0 && (
-                <Card style={{borderLeft:`3px solid ${C.amber}`,background:C.amberLight}}>
-                  <div style={{fontSize:12.5,fontWeight:600,color:C.amber,marginBottom:6}}>⚠️ {notApplied.length} correction(s) non appliquée(s) au fichier Word</div>
-                  <div style={{fontSize:11,color:C.text2,marginBottom:8,lineHeight:1.5}}>Ces corrections n'ont pas pu être localisées exactement dans le document et doivent être faites à la main. Toutes les autres ont bien été appliquées dans le fichier téléchargé.</div>
+                <Card style={{border:`1px solid ${C.amberLine}`,background:C.amberLight}}>
+                  <div style={{fontSize: 15,fontWeight:600,color:C.amber,marginBottom:6,display:"flex",alignItems:"center",gap:8}}><Icon n="alerte" size={18}/>{notApplied.length} correction(s) non appliquée(s) au fichier Word</div>
+                  <div style={{fontSize:12,color:C.text2,marginBottom:8,lineHeight:1.5}}>Ces corrections n'ont pas pu être localisées exactement dans le document et doivent être faites à la main. Toutes les autres ont bien été appliquées dans le fichier téléchargé.</div>
                   {notApplied.map((c,i) => (
-                    <div key={i} style={{fontSize:11,padding:"6px 9px",background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:5}}>
+                    <div key={i} style={{fontSize:12,padding:"6px 9px",background:"#fff",border:`1px solid ${C.border}`,borderRadius:6,marginBottom:5}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                        {c.code && <span style={{fontFamily:"monospace",color:C.text3,fontSize:9.5}}>{c.code}</span>}
-                        {c.reason && <span style={{color:C.text3,fontSize:10}}>{c.reason}</span>}
+                        {c.code && <span style={{fontFamily:"monospace",color:C.text3,fontSize:10.5}}>{c.code}</span>}
+                        {c.reason && <span style={{color:C.text3,fontSize:11}}>{c.reason}</span>}
                       </div>
                       <span style={{color:C.red,textDecoration:"line-through"}}>{c.original}</span>
                       <span style={{color:C.text3,margin:"0 5px"}}>→</span>
@@ -1228,27 +1272,27 @@ function HistoriquePage({history}) {
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <PageHeader title="Historique" sub="Documents traités dans cette session"/>
-      <div style={{padding:"22px 30px",flex:1,overflowY:"auto"}}>
+      <div style={{padding:"22px 36px 36px",flex:1,overflowY:"auto"}}>
         <Card>
           {history.length === 0 ? (
             <div style={{textAlign:"center",padding:"44px 20px",color:C.text3}}>
-              <div style={{fontSize:30,marginBottom:9,opacity:.25}}>🕐</div>
-              <p style={{fontSize:12.5}}>Aucune correction effectuée dans cette session</p>
+              <div style={{display:"flex",justifyContent:"center",color:C.border2,marginBottom:12}}><Icon n="horloge" size={38} stroke={1.4}/></div>
+              <p style={{fontSize: 14,margin:0}}>Aucune correction effectuée dans cette session</p>
             </div>
           ) : (
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12.5}}>
               <thead>
                 <tr style={{borderBottom:`1px solid ${C.cream3}`}}>
-                  {["Document","Type","Corrections","Score","Date"].map(h => <th key={h} style={{padding:"8px 13px",textAlign:"left",fontSize:9.5,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".05em"}}>{h}</th>)}
+                  {["Document","Type","Corrections","Score","Date"].map(h => <th key={h} style={{padding:"8px 13px",textAlign:"left",fontSize:10.5,fontWeight:500,color:C.text3,textTransform:"uppercase",letterSpacing:".05em"}}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {history.map(h => (
                   <tr key={h.id} style={{borderBottom:`1px solid ${C.cream2}`}}>
                     <td style={{padding:"9px 13px",fontWeight:500}}>{h.file}</td>
-                    <td style={{padding:"9px 13px"}}><span style={{background:CAT_BG.FORME,color:CAT_FG.FORME,padding:"1px 7px",borderRadius:20,fontSize:9.5,fontWeight:600}}>{TYPE_LABELS[h.type]||h.type}</span></td>
+                    <td style={{padding:"9px 13px"}}><span style={{background:CAT_BG.FORME,color:CAT_FG.FORME,padding:"1px 7px",borderRadius:20,fontSize:10.5,fontWeight:600}}>{TYPE_LABELS[h.type]||h.type}</span></td>
                     <td style={{padding:"9px 13px"}}>{h.corrections}</td>
-                    <td style={{padding:"9px 13px"}}><span style={{background:h.score>=7?C.greenLight:C.amberLight,color:h.score>=7?C.green:C.amber,padding:"2px 7px",borderRadius:20,fontSize:10,fontWeight:600}}>{h.score}/10</span></td>
+                    <td style={{padding:"9px 13px"}}><span style={{background:h.score>=7?C.greenLight:C.amberLight,color:h.score>=7?C.green:C.amber,padding:"2px 7px",borderRadius:20,fontSize:11,fontWeight:600}}>{h.score}/10</span></td>
                     <td style={{padding:"9px 13px",color:C.text3}}>{h.date}</td>
                   </tr>
                 ))}
@@ -1265,7 +1309,7 @@ function HistoriquePage({history}) {
 function DashboardPage({history}) {
   const total = history.length;
   const totalCorr = history.reduce((s,h) => s+h.corrections, 0);
-  const avg = total ? (history.reduce((s,h) => s+h.score, 0)/total).toFixed(1) : "—";
+  const avg = total ? (history.reduce((s,h) => s+h.score, 0)/total).toFixed(1) : "-";
   const freq = {};
   history.forEach(h => h.data?.forEach(c => { const k = c.original.substring(0,26); freq[k] = (freq[k]||0)+1; }));
   const sorted = Object.entries(freq).sort((a,b) => b[1]-a[1]).slice(0,5);
@@ -1278,33 +1322,33 @@ function DashboardPage({history}) {
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <PageHeader title="Tableau de bord" sub="Statistiques et erreurs fréquentes"/>
-      <div style={{flex:1,overflowY:"auto",padding:"22px 30px",display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{flex:1,overflowY:"auto",padding:"22px 36px 36px",display:"flex",flexDirection:"column",gap:14}}>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:11}}>
-          {[["📄",total,"Documents traités","#edf2ff"],["✏️",totalCorr,"Corrections totales",C.amberLight],["✅",0,"Acceptées",C.greenLight],["⭐",avg,"Score moyen",C.cream2]].map(([icon,num,label,bg]) => (
-            <div key={label} style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"16px 18px",display:"flex",alignItems:"center",gap:13}}>
-              <div style={{width:38,height:38,borderRadius:9,background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{icon}</div>
-              <div><div style={{fontFamily:"Georgia,serif",fontSize:26,fontWeight:600,color:C.navy,lineHeight:1}}>{num}</div><div style={{fontSize:11.5,color:C.text2,marginTop:2}}>{label}</div></div>
+          {[["doc",total,"Documents traités",C.blueLight,C.navy],["crayon",totalCorr,"Corrections totales",C.amberLight,C.amber],["ok",0,"Acceptées",C.greenLight,C.green],["etoile",avg,"Score moyen",C.cream2,C.navy]].map(([icon,num,label,bg,fg]) => (
+            <div key={label} style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"16px 18px",display:"flex",alignItems:"center",gap:13}}>
+              <div style={{width:40,height:40,borderRadius:8,background:bg,color:fg,display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n={icon} size={20} stroke={1.8}/></div>
+              <div><div style={{fontSize: 26,fontWeight:600,color:C.navy,lineHeight:1.1}}>{num}</div><div style={{fontSize:12.5,color:C.text2,marginTop:2}}>{label}</div></div>
             </div>
           ))}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
           <Card>
-            <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:12}}>Erreurs les plus fréquentes</div>
-            {sorted.length === 0 ? <div style={{fontSize:12,color:C.text3,textAlign:"center",padding:18}}>Aucune donnée disponible</div> :
+            <h2 style={{...H2,fontSize: 17,marginBottom:12}}>Erreurs les plus fréquentes</h2>
+            {sorted.length === 0 ? <div style={{fontSize:13,color:C.text3,textAlign:"center",padding:18}}>Aucune donnée disponible</div> :
               sorted.map(([k,v]) => (
-                <div key={k} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 9px",background:C.cream2,borderRadius:5,marginBottom:5,fontSize:11.5}}>
+                <div key={k} style={{display:"flex",alignItems:"center",gap:9,padding:"6px 9px",background:C.cream2,borderRadius:5,marginBottom:5,fontSize:12.5}}>
                   <span style={{flex:"0 0 130px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={k}>{k}</span>
                   <div style={{flex:1,height:3,background:C.cream3,borderRadius:2}}><div style={{height:3,background:C.navy2,borderRadius:2,width:`${Math.round(v/maxF*100)}%`}}/></div>
-                  <span style={{fontSize:10.5,color:C.text3,minWidth:22,textAlign:"right"}}>{v}×</span>
+                  <span style={{fontSize:11.5,color:C.text3,minWidth:22,textAlign:"right"}}>{v}×</span>
                 </div>
               ))
             }
           </Card>
           <Card>
-            <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:12}}>Répartition par type</div>
-            {Object.keys(types).length === 0 ? <div style={{fontSize:12,color:C.text3,textAlign:"center",padding:18}}>Aucune donnée disponible</div> :
+            <h2 style={{...H2,fontSize: 17,marginBottom:12}}>Répartition par type</h2>
+            {Object.keys(types).length === 0 ? <div style={{fontSize:13,color:C.text3,textAlign:"center",padding:18}}>Aucune donnée disponible</div> :
               Object.entries(types).map(([t,v]) => (
-                <div key={t} style={{display:"flex",alignItems:"center",gap:9,fontSize:11.5,marginBottom:9}}>
+                <div key={t} style={{display:"flex",alignItems:"center",gap:9,fontSize:12.5,marginBottom:9}}>
                   <div style={{width:9,height:9,borderRadius:2,background:tc[t]||"#aaa",flexShrink:0}}/>
                   <div style={{flex:1}}>{t.charAt(0).toUpperCase()+t.slice(1)}</div>
                   <div style={{minWidth:70}}><div style={{height:3,background:C.cream3,borderRadius:2}}><div style={{height:3,background:tc[t]||"#aaa",borderRadius:2,width:`${Math.round(v/typeTotal*100)}%`}}/></div></div>
@@ -1323,10 +1367,10 @@ function DashboardPage({history}) {
 function FInput({label, field, ph, area, form, setForm}) {
   return (
     <div>
-      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
+      <div style={{fontSize:10.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
       {area
-        ? <textarea value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} rows={area} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text,resize:"vertical",lineHeight:1.5}}/>
-        : <input value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}/>
+        ? <textarea value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} rows={area} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:13,color:C.text,resize:"vertical",lineHeight:1.5}}/>
+        : <input value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} placeholder={ph} style={{width:"100%",padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:13,color:C.text}}/>
       }
     </div>
   );
@@ -1335,8 +1379,8 @@ function FInput({label, field, ph, area, form, setForm}) {
 function FSel({label, field, opts, form, setForm}) {
   return (
     <div>
-      <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
-      <select value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
+      <div style={{fontSize:10.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
+      <select value={form[field]||""} onChange={e => setForm(f => ({...f,[field]:e.target.value}))} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:13,color:C.text}}>
         {opts.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
       </select>
     </div>
@@ -1385,23 +1429,23 @@ function AssistantConsigne({consignes, onAdd, onClose}) {
   };
   const ar = t => /[؀-ۿ]/.test(t || "");
   const bubble = (m, i) => (
-    <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"88%",background:m.role==="user"?C.navy:"#fff",color:m.role==="user"?"#fff":C.text,border:m.role==="user"?"none":`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:12.5,lineHeight:1.55,whiteSpace:"pre-wrap"}}>
+    <div key={i} style={{alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"88%",background:m.role==="user"?C.navy:"#fff",color:m.role==="user"?"#fff":C.text,border:m.role==="user"?"none":`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",fontSize:13.5,lineHeight:1.55,whiteSpace:"pre-wrap"}}>
       <div dir="auto">{m.content}</div>
-      {m.doublon && <div style={{marginTop:6,fontSize:11,color:C.amber}}>Consigne existante concernée : {m.doublon}</div>}
+      {m.doublon && <div style={{marginTop:6,fontSize:12,color:C.amber}}>Consigne existante concernée : {m.doublon}</div>}
       {m.consigne && (
         <div style={{marginTop:9,border:`1px solid ${C.border2}`,borderRadius:8,padding:"10px 12px",background:C.cream}}>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
-            <span style={{fontWeight:600,color:C.navy,fontSize:12.5}}>{m.consigne.code} · {m.consigne.label}</span>
-            <span style={{fontSize:10,background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:"1px 7px",color:C.text2}}>{TYPE_LABELS[m.consigne.doctype] || m.consigne.doctype}</span>
-            <span style={{fontSize:10,background:m.consigne.mode==="regex"?C.greenLight:C.amberLight,color:m.consigne.mode==="regex"?C.green:C.amber,borderRadius:10,padding:"1px 7px"}}>{m.consigne.mode==="regex" ? "Correction automatique" : "Appliquée à la lecture par le correcteur"}</span>
+            <span style={{fontWeight:600,color:C.navy,fontSize:13.5}}>{m.consigne.code} · {m.consigne.label}</span>
+            <span style={{fontSize:11,background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:"1px 7px",color:C.text2}}>{TYPE_LABELS[m.consigne.doctype] || m.consigne.doctype}</span>
+            <span style={{fontSize:11,background:m.consigne.mode==="regex"?C.greenLight:C.amberLight,color:m.consigne.mode==="regex"?C.green:C.amber,borderRadius:10,padding:"1px 7px"}}>{m.consigne.mode==="regex" ? "Correction automatique" : "Appliquée à la lecture par le correcteur"}</span>
           </div>
-          <div dir="auto" style={{fontSize:12,color:C.text,lineHeight:1.55}}>{m.consigne.text}</div>
-          {m.consigne.examples && <div dir="auto" style={{fontSize:11.5,color:C.text2,marginTop:6,whiteSpace:"pre-line"}}>{m.consigne.examples}</div>}
+          <div dir="auto" style={{fontSize:13,color:C.text,lineHeight:1.55}}>{m.consigne.text}</div>
+          {m.consigne.examples && <div dir="auto" style={{fontSize:12.5,color:C.text2,marginTop:6,whiteSpace:"pre-line"}}>{m.consigne.examples}</div>}
           {m.essais && m.essais.length > 0 && (
             <div style={{marginTop:8}}>
-              <div style={{fontSize:10.5,fontWeight:600,color:C.text2,marginBottom:3}}>Essais exécutés</div>
+              <div style={{fontSize:11.5,fontWeight:600,color:C.text2,marginBottom:3}}>Essais exécutés</div>
               {m.essais.map((t, k) => (
-                <div key={k} dir="auto" style={{fontSize:11.5,color:t.ok?C.green:C.red,lineHeight:1.5}}>
+                <div key={k} dir="auto" style={{fontSize:12.5,color:t.ok?C.green:C.red,lineHeight:1.5}}>
                   {t.ok ? "✓" : "✗"} {t.avant}{t.avant === t.attendu ? "  (inchangé, comme attendu)" : `  →  ${t.obtenu}`}
                 </div>
               ))}
@@ -1417,39 +1461,39 @@ function AssistantConsigne({consignes, onAdd, onClose}) {
         <div style={{padding:"14px 18px",background:"#fff",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
             <div style={{fontSize:14,fontWeight:600,color:C.navy}}>Assistant de consignes</div>
-            <div style={{fontSize:11,color:C.text3}}>Décrivez la correction ; l'assistant rédige la consigne et la vérifie.</div>
+            <div style={{fontSize:12,color:C.text3}}>Décrivez la correction ; l'assistant rédige la consigne et la vérifie.</div>
           </div>
-          <button onClick={onClose} style={{border:`1px solid ${C.border2}`,background:"#fff",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",color:C.text2}}>Fermer</button>
+          <button onClick={onClose} style={{border:`1px solid ${C.border2}`,background:"#fff",borderRadius:6,padding:"5px 10px",fontSize:13,cursor:"pointer",color:C.text2}}>Fermer</button>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"14px 18px",display:"flex",flexDirection:"column",gap:9}}>
           {msgs.map(bubble)}
-          {busy && <div style={{alignSelf:"flex-start",fontSize:12,color:C.text3,display:"flex",gap:7,alignItems:"center"}}><Spinner/> Rédaction et vérification de la consigne…</div>}
-          {err && <div style={{fontSize:12,color:C.red,background:C.redLight,border:"1px solid #f5b7b7",borderRadius:8,padding:"7px 10px"}}>Erreur : {err}</div>}
+          {busy && <div style={{alignSelf:"flex-start",fontSize:13,color:C.text3,display:"flex",gap:7,alignItems:"center"}}><Spinner/> Rédaction et vérification de la consigne…</div>}
+          {err && <div style={{fontSize:13,color:C.red,background:C.redLight,border:"1px solid #f5b7b7",borderRadius:8,padding:"7px 10px"}}>Erreur : {err}</div>}
           <div ref={endRef}/>
         </div>
         {last && !busy && last === msgs[msgs.length-1] && (
           <div style={{padding:"10px 18px",background:"#fff",borderTop:`1px solid ${C.border}`}}>
             {last.consigne.mode === "regex" && (
               <div style={{marginBottom:8}}>
-                <div style={{fontSize:10.5,fontWeight:500,color:C.text2,marginBottom:3}}>Essayer sur un texte (facultatif) : collez un passage d'un vrai document</div>
+                <div style={{fontSize:11.5,fontWeight:500,color:C.text2,marginBottom:3}}>Essayer sur un texte (facultatif) : collez un passage d'un vrai document</div>
                 <div style={{display:"flex",gap:6}}>
-                  <textarea dir="auto" value={essai} onChange={e => setEssai(e.target.value)} rows={2} style={{flex:1,padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:12,resize:"vertical"}}/>
-                  <button onClick={tester} style={{padding:"0 12px",border:`1px solid ${C.border2}`,background:"#fff",borderRadius:6,fontSize:12,cursor:"pointer",color:C.text2}}>Essayer</button>
+                  <textarea dir="auto" value={essai} onChange={e => setEssai(e.target.value)} rows={2} style={{flex:1,padding:"6px 8px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:13,resize:"vertical"}}/>
+                  <button onClick={tester} style={{padding:"0 12px",border:`1px solid ${C.border2}`,background:"#fff",borderRadius:6,fontSize:13,cursor:"pointer",color:C.text2}}>Essayer</button>
                 </div>
-                {essaiRes && <div style={{marginTop:5,fontSize:11.5,color:C.text2,maxHeight:90,overflowY:"auto"}}>
+                {essaiRes && <div style={{marginTop:5,fontSize:12.5,color:C.text2,maxHeight:90,overflowY:"auto"}}>
                   {essaiRes.length === 0 ? "La consigne ne change rien dans ce texte." : essaiRes.map((c, k) => <div key={k} dir="auto">« {c.original} » → « {c.suggested} »</div>)}
                 </div>}
               </div>
             )}
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <button onClick={() => onAdd(last.consigne)} style={{padding:"8px 14px",border:"none",borderRadius:7,background:C.green,color:"#fff",fontSize:12.5,fontWeight:500,cursor:"pointer"}}>✓ Ajouter cette consigne</button>
-              <span style={{fontSize:11,color:C.text3}}>ou écrivez ci-dessous ce qu'il faut changer.</span>
+              <button onClick={() => onAdd(last.consigne)} style={{padding:"8px 14px",border:"none",borderRadius:7,background:C.green,color:"#fff",fontSize:13.5,fontWeight:500,cursor:"pointer"}}>✓ Ajouter cette consigne</button>
+              <span style={{fontSize:12,color:C.text3}}>ou écrivez ci-dessous ce qu'il faut changer.</span>
             </div>
           </div>
         )}
         <div style={{padding:"10px 18px 14px",background:"#fff",borderTop:`1px solid ${C.border}`,display:"flex",gap:8}}>
-          <textarea dir="auto" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} rows={3} placeholder={"Ex. : dans les lettres en arabe, écrire « بواسطة البريد الإلكتروني » et non « عبر الإيميل »"} style={{flex:1,padding:"8px 10px",border:`1px solid ${C.border2}`,borderRadius:8,fontSize:12.5,resize:"none",color:C.text}}/>
-          <button onClick={send} disabled={busy || !input.trim()} style={{padding:"0 16px",border:"none",borderRadius:8,background:busy||!input.trim()?"#9ca3af":C.navy,color:"#fff",fontSize:12.5,fontWeight:500,cursor:busy||!input.trim()?"not-allowed":"pointer"}}>Envoyer</button>
+          <textarea dir="auto" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} rows={3} placeholder={"Ex. : dans les lettres en arabe, écrire « بواسطة البريد الإلكتروني » et non « عبر الإيميل »"} style={{flex:1,padding:"8px 10px",border:`1px solid ${C.border2}`,borderRadius:8,fontSize:13.5,resize:"none",color:C.text}}/>
+          <button onClick={send} disabled={busy || !input.trim()} style={{padding:"0 16px",border:"none",borderRadius:8,background:busy||!input.trim()?"#9ca3af":C.navy,color:"#fff",fontSize:13.5,fontWeight:500,cursor:busy||!input.trim()?"not-allowed":"pointer"}}>Envoyer</button>
         </div>
       </div>
     </div>
@@ -1561,7 +1605,7 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
       <PageHeader
         title="Fiches de consignes"
-        sub={`Règles de correction par type de document — ${consignes.length} consignes`}
+        sub={`Règles de correction par type de document · ${consignes.length} consignes`}
         right={
           <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
             <input
@@ -1569,12 +1613,12 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
               value={adminToken}
               onChange={e => setAdminToken(e.target.value)}
               placeholder="Mot de passe admin"
-              style={{padding:"7px 10px",border:`1px solid ${C.border2}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text,width:160}}
+              style={{padding:"7px 10px",border:`1px solid ${C.border2}`,borderRadius:7,fontFamily:"inherit",fontSize:13,color:C.text,width:160}}
             />
-            <button onClick={saveToServer} disabled={busy} style={{padding:"7px 14px",border:"none",borderRadius:7,background:busy?"#9ca3af":C.green,color:"#fff",fontSize:12.5,fontWeight:500,cursor:busy?"not-allowed":"pointer"}}>
-              💾 Enregistrer sur le serveur
+            <button onClick={saveToServer} disabled={busy} style={{padding:"7px 14px",border:"none",borderRadius:7,background:busy?"#9ca3af":C.green,color:"#fff",fontSize:13.5,fontWeight:500,cursor:busy?"not-allowed":"pointer"}}>
+              <Icon n="enregistrer" size={15} style={{verticalAlign:"-3px",marginRight:6}}/>Enregistrer sur le serveur
             </button>
-            <button onClick={reloadFromServer} disabled={busy} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:busy?"not-allowed":"pointer"}}>
+            <button onClick={reloadFromServer} disabled={busy} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:13.5,fontWeight:500,cursor:busy?"not-allowed":"pointer"}}>
               ↻ Recharger
             </button>
             <button onClick={() => {
@@ -1598,8 +1642,8 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
                 }
               };
               input.click();
-            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              📂 Importer JSON
+            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:13.5,fontWeight:500,cursor:"pointer"}}>
+              <Icon n="dossier" size={15} style={{verticalAlign:"-3px",marginRight:6}}/>Importer JSON
             </button>
             <button onClick={() => {
               const data = JSON.stringify({version:"3.0",source:"OCE Platform",created:new Date().toLocaleDateString("fr-FR"),count:consignes.length,consignes}, null, 2);
@@ -1608,25 +1652,25 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
               const a = document.createElement("a");
               a.href = url; a.download = "fiches_consignes.json"; a.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
-            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>
-              💾 Exporter JSON
+            }} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:13.5,fontWeight:500,cursor:"pointer"}}>
+              <Icon n="telecharger" size={15} style={{verticalAlign:"-3px",marginRight:6}}/>Exporter JSON
             </button>
-            <button onClick={() => setAssistant(true)} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.gold,color:"#fff",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>✨ Créer avec l'assistant</button>
-            <button onClick={newC} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:12.5,fontWeight:500,cursor:"pointer"}}>+ Saisie manuelle</button>
+            <button onClick={() => setAssistant(true)} style={{padding:"7px 14px",border:"none",borderRadius:7,background:C.gold,color:C.text,fontSize:13.5,fontWeight:600,cursor:"pointer"}}><Icon n="assistant" size={15} style={{verticalAlign:"-3px",marginRight:6}}/>Créer avec l'assistant</button>
+            <button onClick={newC} style={{padding:"7px 14px",border:`1px solid ${C.border2}`,borderRadius:7,background:"#fff",color:C.text2,fontSize:13.5,fontWeight:500,cursor:"pointer"}}>+ Saisie manuelle</button>
           </div>
         }
       />
       {assistant && <AssistantConsigne consignes={consignes} onAdd={addFromAssistant} onClose={() => setAssistant(false)}/>}
-      {serverMsg && <div style={{margin:"10px 30px 0",padding:"8px 14px",background:serverMsg.startsWith("Erreur")?C.redLight:C.greenLight,border:`1px solid ${serverMsg.startsWith("Erreur")?"#f5b7b7":"#a7d7b7"}`,borderRadius:8,fontSize:12.5,color:serverMsg.startsWith("Erreur")?C.red:C.green}}>{serverMsg}</div>}
-      <div style={{flex:1,padding:"18px 30px",overflow:"hidden",display:"grid",gridTemplateColumns:"255px 1fr",gap:14}}>
+      {serverMsg && <div style={{margin:"16px 36px 0",padding:"8px 14px",background:serverMsg.startsWith("Erreur")?C.redLight:C.greenLight,border:`1px solid ${serverMsg.startsWith("Erreur")?"#f5b7b7":"#a7d7b7"}`,borderRadius:8,fontSize:13.5,color:serverMsg.startsWith("Erreur")?C.red:C.green}}>{serverMsg}</div>}
+      <div style={{flex:1,padding:"20px 36px 28px",overflow:"hidden",display:"grid",gridTemplateColumns:"300px minmax(0,1fr)",gap:14}}>
         {/* Liste */}
-        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",display:"flex",flexDirection:"column"}}>
           <div style={{padding:"10px 12px",borderBottom:`1px solid ${C.border}`,display:"flex",gap:5}}>
-            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{flex:1,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+            <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{flex:1,minWidth:0,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:11.5,fontFamily:"inherit"}}>
               <option value="">Tous types</option>
               {Object.entries(TYPE_LABELS).filter(([k]) => k!=="tous").map(([v,l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{flex:1,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:10.5,fontFamily:"inherit"}}>
+            <select value={filterCat} onChange={e => setFilterCat(e.target.value)} style={{flex:1,minWidth:0,padding:"4px 7px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:11.5,fontFamily:"inherit"}}>
               <option value="">Toutes</option>
               {["FORME","FOND","TERMINOLOGIE","BILINGUE"].map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -1634,50 +1678,50 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
           <div style={{overflowY:"auto",flex:1}}>
             {filtered.map(c => (
               <div key={c.id} onClick={() => selectC(c)} style={{padding:"8px 12px",borderBottom:`1px solid ${C.cream2}`,cursor:"pointer",display:"flex",alignItems:"center",gap:7,background:selected===c.id?"#edf2ff":"#fff",borderLeft:selected===c.id?`3px solid ${C.navy2}`:"3px solid transparent",opacity:c.active===false?.5:1,transition:"all .1s"}}>
-                <span style={{fontSize:9.5,fontWeight:600,color:C.text3,minWidth:32,fontFamily:"monospace"}}>{c.code}</span>
+                <span style={{fontSize:10.5,fontWeight:600,color:C.text3,minWidth:32,fontFamily:"monospace"}}>{c.code}</span>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:11,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}{c.active===false?" (inactive)":""}</div>
-                  <div style={{fontSize:9.5,color:C.text3,marginTop:1}}>{TYPE_LABELS[c.doctype]||c.doctype}</div>
+                  <div style={{fontSize:12,fontWeight:500,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.label}{c.active===false?" (inactive)":""}</div>
+                  <div style={{fontSize:10.5,color:C.text3,marginTop:1}}>{TYPE_LABELS[c.doctype]||c.doctype}</div>
                 </div>
-                <span style={{background:CAT_BG[c.category]||"#f0f0f0",color:CAT_FG[c.category]||"#555",padding:"1px 5px",borderRadius:20,fontSize:8,fontWeight:600,flexShrink:0}}>{c.category}</span>
+                <span style={{background:CAT_BG[c.category]||"#f0f0f0",color:CAT_FG[c.category]||"#555",padding:"1px 5px",borderRadius:20,fontSize:9,fontWeight:600,flexShrink:0}}>{c.category}</span>
               </div>
             ))}
-            {filtered.length === 0 && <div style={{padding:18,fontSize:12,color:C.text3,textAlign:"center"}}>Aucune consigne</div>}
+            {filtered.length === 0 && <div style={{padding:18,fontSize:13,color:C.text3,textAlign:"center"}}>Aucune consigne</div>}
           </div>
-          <div style={{padding:"7px 12px",borderTop:`1px solid ${C.cream2}`,fontSize:9.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
+          <div style={{padding:"7px 12px",borderTop:`1px solid ${C.cream2}`,fontSize:10.5,color:C.text3}}>{filtered.length} consigne{filtered.length>1?"s":""}</div>
         </div>
 
         {/* Éditeur */}
-        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:10,padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{background:"#fff",border:`1px solid ${C.border}`,borderRadius:8,padding:20,overflowY:"auto",display:"flex",flexDirection:"column",gap:12}}>
           {!selected && !isNew ? (
             <div style={{textAlign:"center",padding:"44px 20px",color:C.text3}}>
-              <div style={{fontSize:30,marginBottom:9,opacity:.25}}>📋</div>
-              <p style={{fontSize:12.5}}>Sélectionnez une consigne ou créez-en une nouvelle</p>
+              <div style={{display:"flex",justifyContent:"center",color:C.border2,marginBottom:12}}><Icon n="liste" size={38} stroke={1.4}/></div>
+              <p style={{fontSize: 14,margin:0}}>Sélectionnez une consigne ou créez-en une nouvelle</p>
             </div>
           ) : (
             <>
               <div style={{display:"flex",alignItems:"center",gap:9,paddingBottom:12,borderBottom:`1px solid ${C.cream2}`}}>
                 <div style={{flex:1,fontSize:13,fontWeight:500,color:C.navy2}}>{isNew ? "Nouvelle consigne" : `Consigne ${selC?.code}`}</div>
-                {!isNew && <span style={{fontSize:9.5,padding:"2px 7px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>v{selC?.version}</span>}
-                <label style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:C.text2,cursor:"pointer"}}>
+                {!isNew && <span style={{fontSize:10.5,padding:"2px 7px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>v{selC?.version}</span>}
+                <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.text2,cursor:"pointer"}}>
                   <input type="checkbox" checked={form.active!==false} onChange={e => setForm(f => ({...f,active:e.target.checked}))}/>
                   Active
                 </label>
-                {saved && <span style={{fontSize:10,color:C.green,fontWeight:500}}>✓ Enregistré (local)</span>}
-                <button onClick={save} style={{padding:"5px 13px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer"}}>Appliquer</button>
-                {!isNew && <button onClick={dup} style={{padding:"5px 11px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:11,cursor:"pointer",color:C.text2}}>Dupliquer</button>}
-                {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:11,cursor:"pointer",color:C.red,fontWeight:confirmDel?600:400}}>{confirmDel ? "Confirmer la suppression" : "Supprimer"}</button>}
+                {saved && <span style={{fontSize:11,color:C.green,fontWeight:500}}>✓ Enregistré (local)</span>}
+                <button onClick={save} style={{padding:"5px 13px",border:"none",borderRadius:6,background:C.navy,color:"#fff",fontSize:12,fontWeight:500,cursor:"pointer"}}>Appliquer</button>
+                {!isNew && <button onClick={dup} style={{padding:"5px 11px",border:`1px solid ${C.border2}`,borderRadius:6,background:"#fff",fontSize:12,cursor:"pointer",color:C.text2}}>Dupliquer</button>}
+                {!isNew && <button onClick={del} style={{padding:"5px 11px",border:"1px solid #f5b7b7",borderRadius:6,background:C.redLight,fontSize:12,cursor:"pointer",color:C.red,fontWeight:confirmDel?600:400}}>{confirmDel ? "Confirmer la suppression" : "Supprimer"}</button>}
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:9}}>
                 <FInput label="Code" field="code" ph="ex : F-01" form={form} setForm={setForm}/>
                 <FSel label="Type de document" field="doctype" opts={[["cp_fr","CP Français"],["cp_ar","بلاغ AR"],["bilingue","Bilingue"],["decision_ar","Décision AR"],["lettre_ar","Lettre AR"],["lettre_fr","Lettre FR"],["lettres","Lettres (FR et AR)"],["rapport","Rapport d'instruction"],["tous","Tous types"]]} form={form} setForm={setForm}/>
                 <div>
-                <div style={{fontSize:9.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Catégorie</div>
+                <div style={{fontSize:10.5,fontWeight:500,color:C.text2,textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>Catégorie</div>
                 <select value={form.category||""} onChange={e => {
                   const cat = e.target.value;
                   const newCode = isNew ? autoCode(cat, consignes) : form.code;
                   setForm(f => ({...f, category:cat, code:newCode, id:newCode}));
-                }} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:12,color:C.text}}>
+                }} style={{width:"100%",padding:"6px 9px",border:`1px solid ${C.border}`,borderRadius:7,fontFamily:"inherit",fontSize:13,color:C.text}}>
                   {[["FORME","Forme"],["FOND","Fond"],["TERMINOLOGIE","Terminologie"],["BILINGUE","Bilingue"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
@@ -1686,10 +1730,10 @@ function ConsignesPage({consignes, setConsignes, onSaveServer, onReloadServer}) 
               <FInput label="Description / règle complète" field="text" ph="Décrire la règle de correction, les formulations correctes, les erreurs à détecter…" area={4} form={form} setForm={setForm}/>
               <FInput label="Exemples (incorrect → correct)" field="examples" ph="Incorrect : xxx → Correct : yyy" area={3} form={form} setForm={setForm}/>
               <FInput label="Notes / source" field="notes" ph="ex : Article 13 loi n°104-12" form={form} setForm={setForm}/>
-              <div style={{fontSize:10.5,color:C.text3,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>
+              <div style={{fontSize:11.5,color:C.text3,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>
                 Après « Appliquer », cliquez sur « Enregistrer sur le serveur » (en haut) pour rendre vos changements permanents. Sinon ils restent dans cette session seulement.
               </div>
-              {!isNew && <div style={{fontSize:10.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>Créé le {selC?.created} · Version {selC?.version} · Mode {selC?.mode||"claude"}</div>}
+              {!isNew && <div style={{fontSize:11.5,color:C.text3,paddingTop:8,borderTop:`1px solid ${C.cream2}`}}>Créé le {selC?.created} · Version {selC?.version} · Mode {selC?.mode||"claude"}</div>}
             </>
           )}
         </div>
@@ -1706,6 +1750,9 @@ function ComparaisonPage({consignes}) {
   const [arName, setArName] = useState("");
   const [arText, setArText] = useState("");
   const [phase, setPhase] = useState("idle");
+  // Analyse lancée ou résultats prêts : remonter en haut de la zone, où s'affichent la progression puis le résumé.
+  const zoneRef = useRef(null);
+  useEffect(() => { if ((phase === "results" || phase === "loading") && zoneRef.current) zoneRef.current.scrollTo({ top: 0, behavior: "smooth" }); }, [phase]);
   const [discrepancies, setDiscrepancies] = useState([]);
   const [summary, setSummary] = useState("");
   const [error, setError] = useState("");
@@ -1804,11 +1851,11 @@ ${body}</body></html>`;
       onClick={() => ref.current.click()}
       onDragOver={e => e.preventDefault()}
       onDrop={e => { e.preventDefault(); onFile(e.dataTransfer.files[0]); }}
-      style={{border:`1.5px dashed ${name?C.navy2:C.border2}`,background:name?"#edf2ff":C.cream2,borderRadius:8,padding:"18px 14px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
+      style={{border:`1.5px dashed ${name?C.navy2:C.border2}`,background:name?C.blueLight:C.cream,borderRadius:8,padding:"18px 14px",textAlign:"center",cursor:"pointer",transition:"all .2s"}}
     >
-      <div style={{fontSize:22,marginBottom:5}}>📄</div>
-      <div style={{fontSize:12,fontWeight:500,color:C.text}}>{name || label}</div>
-      <div style={{fontSize:10.5,color:C.text3,marginTop:3}}>{sub}</div>
+      <div style={{display:"flex",justifyContent:"center",color:C.navy,marginBottom:6}}><Icon n="doc" size={26} stroke={1.5}/></div>
+      <div style={{fontSize:13,fontWeight:500,color:C.text}}>{name || label}</div>
+      <div style={{fontSize:11.5,color:C.text3,marginTop:3}}>{sub}</div>
       <input ref={ref} type="file" accept=".docx,.doc,.txt" style={{display:"none"}} onChange={e => onFile(e.target.files[0])} />
     </div>
   );
@@ -1818,12 +1865,12 @@ ${body}</body></html>`;
       <PageHeader
         title="Comparaison des communiqués FR et AR"
         sub="Charger la version FR et la version AR · Rapport des écarts entre les deux"
-        right={<span style={{fontSize:10,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>FR ↔ AR</span>}
+        right={<span style={{fontSize:11,padding:"3px 10px",background:C.cream2,border:`1px solid ${C.border}`,borderRadius:20,color:C.text2}}>FR ↔ AR</span>}
       />
 
-      {error && <div style={{margin:"12px 30px 0",padding:"10px 14px",background:"#fdf0f0",border:`1px solid #f5b7b7`,borderRadius:8,fontSize:12.5,color:C.red}}>{error}</div>}
+      {error && <div style={{margin:"16px 36px 0",padding:"10px 14px",background:C.redLight,border:`1px solid ${C.redLine}`,borderRadius:8,fontSize: 13.5,color:C.red}}>{error}</div>}
 
-      <div style={{flex:1,overflowY:"auto",padding:"20px 30px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,alignItems:"start"}}>
+      <div ref={zoneRef} style={{flex:1,overflowY:"auto",padding:"20px 36px 36px",display:"grid",gridTemplateColumns:"minmax(320px,420px) minmax(0,1fr)",gap:20,alignItems:"start"}}>
         {/* Gauche : les deux fichiers */}
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <Card>
@@ -1834,8 +1881,8 @@ ${body}</body></html>`;
             <SLabel>Version arabe</SLabel>
             {dropZone(arName, handleAr, arRef, "Déposer le communiqué AR", "البلاغ بالعربية (.docx)")}
           </Card>
-          <button onClick={compare} disabled={phase==="loading"} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:phase==="loading"?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:phase==="loading"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-            {phase==="loading" ? <><Spinner/><span>Comparaison en cours…</span></> : <><span>🔀</span><span>Comparer les deux versions</span></>}
+          <button onClick={compare} disabled={phase==="loading"} style={{width:"100%",minHeight:48,padding:"10px",border:"none",borderRadius:6,background:phase==="loading"?"#8B93A3":C.navy,color:"#fff",fontSize: 15,fontWeight:600,cursor:phase==="loading"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+            {phase==="loading" ? <><Spinner/><span>Comparaison en cours…</span></> : <span>Comparer les deux versions</span>}
           </button>
         </div>
 
@@ -1843,8 +1890,8 @@ ${body}</body></html>`;
         <div>
           {phase==="idle" && (
             <Card style={{textAlign:"center",padding:"44px 20px"}}>
-              <div style={{fontSize:34,marginBottom:10,opacity:.25}}>🔀</div>
-              <p style={{fontSize:12.5,color:C.text3,lineHeight:1.6}}>Chargez les deux versions et lancez la comparaison<br/>pour voir le rapport d'écarts</p>
+              <div style={{display:"flex",justifyContent:"center",color:C.border2,marginBottom:12}}><Icon n="comparer" size={40} stroke={1.4}/></div>
+              <p style={{fontSize:13.5,color:C.text3,lineHeight:1.6}}>Chargez les deux versions et lancez la comparaison<br/>pour voir le rapport d'écarts</p>
             </Card>
           )}
 
@@ -1852,7 +1899,7 @@ ${body}</body></html>`;
             <Card style={{padding:"40px 20px"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
                 <Spinner/>
-                <div style={{fontSize:12,color:C.text2}}>Comparaison des chiffres, dates et terminologie…</div>
+                <div style={{fontSize:13,color:C.text2}}>Comparaison des chiffres, dates et terminologie…</div>
               </div>
             </Card>
           )}
@@ -1861,36 +1908,36 @@ ${body}</body></html>`;
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <Card>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                  <div style={{fontSize:13,fontWeight:500,color:C.navy2}}>Cohérence bilingue</div>
-                  <span style={{background:discrepancies.length?C.amberLight:C.greenLight,color:discrepancies.length?C.amber:C.green,padding:"2px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>{discrepancies.length} écart(s)</span>
+                  <h2 style={{...H2,fontSize: 17}}>Cohérence bilingue</h2>
+                  <span style={{background:discrepancies.length?C.amberLight:C.greenLight,color:discrepancies.length?C.amber:C.green,padding:"2px 9px",borderRadius:20,fontSize:12,fontWeight:600}}>{discrepancies.length} écart(s)</span>
                 </div>
-                {summary && <div style={{fontSize:11.5,color:C.text2,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>{summary}</div>}
+                {summary && <div style={{fontSize:12.5,color:C.text2,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>{summary}</div>}
               </Card>
 
               {discrepancies.length === 0 ? (
                 <Card style={{borderLeft:`3px solid ${C.green}`,background:C.greenLight}}>
-                  <div style={{fontSize:12.5,fontWeight:600,color:C.green,marginBottom:4}}>✓ Aucun écart détecté</div>
-                  <div style={{fontSize:11,color:C.text2,lineHeight:1.5}}>Les deux versions concordent sur les points vérifiés : chiffres, dates, qualification de l'opération et terminologie.</div>
+                  <div style={{fontSize:13.5,fontWeight:600,color:C.green,marginBottom:4}}>✓ Aucun écart détecté</div>
+                  <div style={{fontSize:12,color:C.text2,lineHeight:1.5}}>Les deux versions concordent sur les points vérifiés : chiffres, dates, qualification de l'opération et terminologie.</div>
                 </Card>
               ) : (
                 <Card>
-                  <div style={{fontSize:13,fontWeight:500,color:C.navy2,marginBottom:10}}>Écarts relevés ({discrepancies.length})</div>
+                  <h2 style={{...H2,marginBottom:10}}>Écarts relevés ({discrepancies.length})</h2>
                   {discrepancies.map((d,i) => {
                     const cb = CATB[d.category] || CATB.autre;
                     return (
                       <div key={i} style={{padding:"10px 12px",border:`1px solid ${C.border}`,borderLeft:`3px solid ${sevColor(d.severity)}`,borderRadius:8,marginBottom:6,background:"#fff"}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                          <span style={{fontSize:9,fontWeight:600,letterSpacing:".04em",padding:"2px 7px",borderRadius:4,background:cb[0],color:cb[1]}}>{CATL[d.category]||"AUTRE"}</span>
-                          {d.deterministic && <span style={{fontSize:9,color:C.text3}}>vérif. auto</span>}
-                          <span style={{marginLeft:"auto",fontSize:9.5,color:sevColor(d.severity)}}>{d.severity||"moyenne"}</span>
+                          <span style={{fontSize:10,fontWeight:600,letterSpacing:".04em",padding:"2px 7px",borderRadius:4,background:cb[0],color:cb[1]}}>{CATL[d.category]||"AUTRE"}</span>
+                          {d.deterministic && <span style={{fontSize:10,color:C.text3}}>vérif. auto</span>}
+                          <span style={{marginLeft:"auto",fontSize:10.5,color:sevColor(d.severity)}}>{d.severity||"moyenne"}</span>
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"26px 1fr",gap:"4px 8px",alignItems:"baseline"}}>
-                          <span style={{fontSize:9.5,color:C.text3,fontWeight:600}}>FR</span>
-                          <span style={{fontSize:11.5,color:C.text,unicodeBidi:"plaintext"}}>{d.fr}</span>
-                          <span style={{fontSize:9.5,color:C.text3,fontWeight:600}}>AR</span>
-                          <span style={{fontSize:11.5,color:C.text,unicodeBidi:"plaintext"}}>{d.ar}</span>
+                          <span style={{fontSize:10.5,color:C.text3,fontWeight:600}}>FR</span>
+                          <span style={{fontSize:12.5,color:C.text,unicodeBidi:"plaintext"}}>{d.fr}</span>
+                          <span style={{fontSize:10.5,color:C.text3,fontWeight:600}}>AR</span>
+                          <span style={{fontSize:12.5,color:C.text,unicodeBidi:"plaintext"}}>{d.ar}</span>
                         </div>
-                        {d.note && <div style={{fontSize:10.5,color:C.text2,marginTop:6,lineHeight:1.5}}>{d.note}</div>}
+                        {d.note && <div style={{fontSize:11.5,color:C.text2,marginTop:6,lineHeight:1.5}}>{d.note}</div>}
                       </div>
                     );
                   })}
@@ -1898,7 +1945,7 @@ ${body}</body></html>`;
               )}
 
               <button onClick={exportReport} style={{width:"100%",padding:"10px",border:`1px solid ${C.navy2}`,borderRadius:7,background:"#fff",color:C.navy,fontSize:13,fontWeight:500,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                <span>📤</span> Exporter le rapport (.html)
+                <Icon n="exporter" size={17}/> Exporter le rapport (.html)
               </button>
             </div>
           )}
@@ -1928,27 +1975,24 @@ function LoginScreen({ onSuccess }) {
   };
 
   return (
-    <>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } } body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }`}</style>
-      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.cream,padding:20}}>
-        <div style={{width:340,maxWidth:"100%",background:"#fff",border:`1px solid ${C.border}`,borderRadius:14,padding:"30px 26px",boxShadow:"0 10px 40px rgba(15,38,80,.08)"}}>
-          <img src={LOGO_CC} alt="Conseil de la concurrence" style={{display:"block",width:210,maxWidth:"100%",height:"auto",margin:"0 auto 18px"}} />
-          <div style={{fontSize:18,fontWeight:600,color:C.navy,marginBottom:4}}>Plateforme OCE</div>
-          <div style={{fontSize:11.5,color:C.text3,marginBottom:20,lineHeight:1.5}}>Correction des communiqués du Conseil de la concurrence</div>
-          <SLabel>Mot de passe</SLabel>
-          <input
-            type="password" value={pw} autoFocus
-            onChange={e => setPwInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") submit(); }}
-            style={{width:"100%",padding:"9px 11px",border:`1px solid ${C.border2}`,borderRadius:7,fontSize:13,marginBottom:12,outline:"none"}}
-          />
-          {error && <div style={{fontSize:11.5,color:C.red,marginBottom:10}}>{error}</div>}
-          <button onClick={submit} disabled={busy} style={{width:"100%",padding:"10px",border:"none",borderRadius:7,background:busy?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:busy?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-            {busy ? <><Spinner/><span>Vérification…</span></> : "Entrer"}
-          </button>
-        </div>
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.cream,padding:20}}>
+      <div style={{width:380,maxWidth:"100%",background:"#fff",border:`1px solid ${C.border}`,borderTop:`3px solid ${C.gold}`,borderRadius:8,padding:"32px 30px",boxShadow:"0 12px 40px rgba(18,40,79,.08)"}}>
+        <img src={LOGO_CC} alt="Conseil de la concurrence" style={{display:"block",width:220,maxWidth:"100%",height:"auto",margin:"0 auto 22px"}} />
+        <h1 style={{fontFamily:SERIF,fontSize: 24,fontWeight:600,color:C.navy,margin:"0 0 4px"}}>Plateforme OCE</h1>
+        <p style={{fontSize: 14,color:C.text2,margin:"0 0 22px",lineHeight:1.5}}>Correction des communiqués, décisions, lettres et rapports d'instruction</p>
+        <label htmlFor="oce-mdp" style={{display:"block",fontSize: 13.5,fontWeight:500,color:C.text,marginBottom:6}}>Mot de passe</label>
+        <input
+          id="oce-mdp" type="password" value={pw} autoFocus autoComplete="current-password"
+          onChange={e => setPwInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") submit(); }}
+          style={{width:"100%",minHeight:44,padding:"10px 12px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize: 15,marginBottom:14}}
+        />
+        {error && <div role="alert" style={{fontSize: 13.5,color:C.red,marginBottom:12}}>{error}</div>}
+        <button onClick={submit} disabled={busy} style={{width:"100%",minHeight:46,border:"none",borderRadius:6,background:busy?"#8B93A3":C.navy,color:"#fff",fontSize: 15,fontWeight:600,cursor:busy?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+          {busy ? <><Spinner/><span>Vérification…</span></> : "Entrer"}
+        </button>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -1998,22 +2042,13 @@ export default function App() {
 
   if (checking) return (
     <>
-      <style>{`body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }`}</style>
-      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.cream,color:C.text3,fontSize:13}}>Chargement…</div>
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:C.cream,color:C.text3,fontSize: 14}}>Chargement…</div>
     </>
   );
   if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />;
 
   return (
     <>
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #d8d3c8; border-radius: 2px; }
-        input, select, textarea, button { font-family: inherit; }
-      `}</style>
       <div style={{display:"flex",height:"100vh",overflow:"hidden",background:C.cream}}>
         <Sidebar page={page} setPage={setPage}/>
         <main style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>

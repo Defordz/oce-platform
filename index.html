@@ -3,8 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Correction OCE — Conseil de la Concurrence</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚖️</text></svg>" />
+    <title>Correction OCE · Conseil de la concurrence</title>
+    <meta name="theme-color" content="#12284F" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2312284F'/><path d='M9 11h14M16 8v16M11 24h10' stroke='%23C9A646' stroke-width='2.4' stroke-linecap='round' fill='none'/><path d='M9 11l-3 6a3 3 0 0 0 6 0zM23 11l-3 6a3 3 0 0 0 6 0z' fill='%23C9A646'/></svg>" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, #root { height: 100%; }
+      body {
+        margin: 0;
+        background: #F7F5EF;
+        color: #1C2333;
+        font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      input, select, textarea, button { font-family: inherit; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-thumb { background: #D6D0C3; border-radius: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      :focus-visible { outline: 2px solid #C9A646; outline-offset: 2px; }
+      .oce-nav:not([aria-current]):hover { background: rgba(255, 255, 255, .07) !important; color: #FFFFFF !important; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
     <div id="root"></div>

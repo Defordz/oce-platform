@@ -70,10 +70,11 @@ export function verifierFichierFinal({ docAvant, docApres, notesAvant = null, no
   // 4. Corrections et commentaires.
   if (corrections.retenues) {
     const manquent = corrections.retenues - corrections.appliquees;
-    controles.push({ ok: manquent === 0, libelle: manquent ? `${corrections.appliquees} corrections appliquées sur ${corrections.retenues} : ${manquent} n'ont pas pu être placées (listées plus bas)` : `${corrections.appliquees} corrections appliquées sur ${corrections.retenues}` });
+    const appl = `${corrections.appliquees} ${corrections.appliquees > 1 ? 'corrections appliquées' : 'correction appliquée'} sur ${corrections.retenues}`;
+    controles.push({ ok: manquent === 0, libelle: manquent ? `${appl} : ${manquent} ${manquent > 1 ? "n'ont pas pu être placées" : "n'a pas pu être placée"} (${manquent > 1 ? 'listées' : 'listée'} plus bas)` : appl });
   }
   if (commentaires && commentaires.total) {
-    controles.push({ ok: !commentaires.nonLocalises, libelle: commentaires.nonLocalises ? `${commentaires.total} commentaires, dont ${commentaires.nonLocalises} placés en tête du document faute d'avoir retrouvé le passage` : `${commentaires.total} commentaires ancrés sur le passage cité` });
+    controles.push({ ok: !commentaires.nonLocalises, libelle: commentaires.nonLocalises ? `${commentaires.total} ${commentaires.total > 1 ? 'commentaires' : 'commentaire'}, dont ${commentaires.nonLocalises} ${commentaires.nonLocalises > 1 ? 'placés' : 'placé'} en tête du document faute d'avoir retrouvé le passage` : `${commentaires.total} ${commentaires.total > 1 ? 'commentaires ancrés' : 'commentaire ancré'} sur le passage cité` });
   }
   return { ok: controles.every(c => c.ok), controles };
 }
