@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { addComments, paraText } from '../src/wordComments.js';
+process.env.APP_PASSWORD = 'essai';
 
 const DOC = '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
   + '<w:p><w:pPr><w:pStyle w:val="Titre1"/></w:pPr><w:r><w:t>I. Présentation des parties</w:t></w:r></w:p>'
@@ -51,7 +52,7 @@ test('relecture de cohérence : extraits réalignés, observations triées', asy
     { categorie: 'chiffres', gravite: 'importante', extrait: 'Alpha détient 60 %', extrait_lie: 'Beta détient 55 %', observation: 'Somme supérieure à 100 %.' } ] } }] }) }; };
   const { default: handler } = await import('../api/coherence.js');
   const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
-  await handler({ method: 'POST', headers: {}, body: { text: 'Alpha détient 60 % du marché.\nBeta détient 55 % du marché (voir annexe 4).' } }, res);
+  await handler({ method: 'POST', headers: { 'x-app-password': 'essai' }, body: { text: 'Alpha détient 60 % du marché.\nBeta détient 55 % du marché (voir annexe 4).' } }, res);
   globalThis.fetch = saved;
   assert.equal(res.code, 200);
   assert.equal(sent.tools[0].name, 'rapport_coherence');

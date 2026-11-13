@@ -1,7 +1,6 @@
 // api/login.js
 // Valide le mot de passe partage saisi a l'ecran de connexion.
-// Renvoie 200 si correct (ou si APP_PASSWORD n'est pas encore configure),
-// 401 sinon. Ne stocke rien : la verification reelle se refait a chaque appel
+// Renvoie 200 si correct, 401 sinon, 503 si APP_PASSWORD n'est pas configure. Ne stocke rien : la verification reelle se refait a chaque appel
 // des autres endpoints.
 
 import { requireAppPassword } from '../lib/auth.js';

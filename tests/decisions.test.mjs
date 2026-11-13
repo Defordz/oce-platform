@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runDecisionChecks } from '../lib/decisions.js';
+process.env.APP_PASSWORD = 'essai';
 
 const REF = `قرار مجلس المنافسة عدد 100/ق/2026
 الصادر بتاريخ 8 ذو الحجة 1447 الموافق لـ 25 ماي 2026
@@ -63,7 +64,7 @@ test('signatures protégées et « مشروع التركيز » dans le référe
     { type: 'forme', code: '', original: 'وحيث إن السوق المعنية بهذه العملية هي سوق وطنية', suggested: 'وحيث إن السوق المعنية بهذه العملية سوق وطنية', reason: 'y' } ] } }] }) });
   const { default: handler } = await import('../api/analyze.js');
   const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
-  await handler({ method: 'POST', headers: {}, body: { text: REF, docType: 'decision_ar', opts: { forme: true }, consignes: [] } }, res);
+  await handler({ method: 'POST', headers: { 'x-app-password': 'essai' }, body: { text: REF, docType: 'decision_ar', opts: { forme: true }, consignes: [] } }, res);
   globalThis.fetch = saved;
   assert.equal(res.code, 200);
   assert.equal(res.body.corrections.length, 1);

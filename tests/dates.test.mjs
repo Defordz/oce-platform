@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runDatePass } from '../lib/dates.js';
+process.env.APP_PASSWORD = 'essai';
 
 const DATES = { publication: '2026-11-19', deadline: '2026-11-30' };
 const pairs = r => r.corrections.map(c => [c.original, c.suggested]);
@@ -30,7 +31,7 @@ test('une suggestion du modèle sur la date est écartée au profit de la date s
     { type: 'forme', code: '', original: 'soitle 23 novembre 2026', suggested: 'soit le 23 novembre 2026', reason: 'espace' } ] } }] }) });
   const { default: handler } = await import('../api/analyze.js');
   const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
-  await handler({ method: 'POST', headers: {}, body: { docType: 'cp_fr', dates: DATES, opts: { forme: true }, consignes: [], text: 'Délai : 10 jours, soitle 23 novembre 2026.\nFait à Rabat, le 19 novembre 2026.' } }, res);
+  await handler({ method: 'POST', headers: { 'x-app-password': 'essai' }, body: { docType: 'cp_fr', dates: DATES, opts: { forme: true }, consignes: [], text: 'Délai : 10 jours, soitle 23 novembre 2026.\nFait à Rabat, le 19 novembre 2026.' } }, res);
   globalThis.fetch = saved;
   assert.deepEqual(res.body.corrections.map(c => c.suggested), ['soit le 30 novembre 2026']);
 });

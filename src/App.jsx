@@ -1921,7 +1921,7 @@ function LoginScreen({ onSuccess }) {
       const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() } });
       if (r.ok) { onSuccess(); return; }
       clearPw();
-      setError(r.status === 401 ? "Mot de passe incorrect." : "Erreur serveur (" + r.status + ").");
+      setError(r.status === 401 ? "Mot de passe incorrect." : r.status === 503 ? "Accès fermé : le mot de passe de l'application n'est pas configuré sur Vercel (variable APP_PASSWORD)." : "Erreur serveur (" + r.status + ").");
     } catch (e) {
       clearPw(); setError("Connexion impossible : " + e.message);
     } finally { setBusy(false); }
