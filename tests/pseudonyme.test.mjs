@@ -85,3 +85,10 @@ test('collision : un texte qui contient déjà un code est signalé', () => {
   const { entites } = detecterNoms(t);
   assert.equal(construireTable(t, entites).collision, true);
 });
+
+test('sigle donné entre parenthèses après une dénomination', () => {
+  const t = 'La société « Commerce et Distribution des Produits Alimentaires » (« CODIPAC ») vend. CODIPAC achète.';
+  const { entites } = detecterNoms(t);
+  assert.ok(entites.some(e => e.libelle === 'CODIPAC' && e.type === 'SOC' && e.coche));
+  assert.ok(entites.some(e => e.libelle === 'Commerce et Distribution des Produits Alimentaires' && e.coche));
+});

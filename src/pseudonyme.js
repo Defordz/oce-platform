@@ -45,7 +45,7 @@ const INSTITUTIONS = `conseil concurrence commission permanente section ministè
   monsieur madame mademoiselle maître mme mlle mm dr pr me m messieurs mesdames docteur professeur
   tableau tableaux figure graphique annexe annexes introduction conclusion conclusions sommaire référence références source sources note notes
   partie parties chapitre titre article articles page total opération opérations cible cibles acquéreur acquéreurs vendeur vendeurs cédant cédants
-  notifiante projet accord contrat transaction société sociétés entreprise entreprises recommandation analyse
+  notifiante projet accord contrat transaction société sociétés entreprise entreprises recommandation analyse rapport rapports décision avis
   i ii iii iv v vi vii viii ix x xi xii
   tva ht ttc mad dh dhs eur usd ue ca pdm pib ihh hhi atc
   janvier février mars avril mai juin juillet août septembre octobre novembre décembre
@@ -148,6 +148,9 @@ export function detecterNoms(text) {
   // 4. Termes définis : « (ci-après « TTC ») ».
   const reDef = new RegExp(`ci-après(?:[ \\u00a0]+(?:dénommée?s?|désignée?s?|appelée?s?|ensemble))?[ \\u00a0]*,?[ \\u00a0]*(?:(?:la|le|les|l['’])[ \\u00a0]*)?«[ \\u00a0]*([^»\\n]{1,60}?)[ \\u00a0]*»`, 'giu');
   for (const m of text.matchAll(reDef)) motsDistinctifs(m[1]).forEach(w => { if (MAJ.test(w) && !minuscules.has(w.toLowerCase())) ajouter(w, 'SOC', 'ancre'); });
+  // Sigle donné juste après une dénomination : « Commerce et Distribution… » (« CODIPAC »).
+  const reSigle = /»[ \u00a0]*\([ \u00a0]*«[ \u00a0]*([^»\n]{2,40}?)[ \u00a0]*»[ \u00a0]*\)/gu;
+  for (const m of text.matchAll(reSigle)) motsDistinctifs(m[1]).forEach(w => { if (MAJ.test(w) && !minuscules.has(w.toLowerCase())) ajouter(w, 'SOC', 'ancre'); });
 
   // 5. Suggestions (décochées) : autres mots capitalisés jamais écrits en minuscules
   //    (concurrents des tableaux, mais aussi lieux et marques : à trier par l'utilisateur).
