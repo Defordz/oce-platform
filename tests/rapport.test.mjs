@@ -66,3 +66,18 @@ test('prompt de langue des rapports', async () => {
   assert.ok(p.system.includes('Corrige UNIQUEMENT la langue'));
   assert.ok(!p.system.includes('[F-01]'), 'pas de consigne des communiqués');
 });
+
+test('sommaire évité, note de bas de page ancrée sur son appel', () => {
+  const doc = '<w:document xmlns:w="w"><w:body>'
+    + '<w:sdt><w:sdtContent><w:p><w:r><w:t>2. Analyse des effets</w:t></w:r></w:p></w:sdtContent></w:sdt>'
+    + '<w:p><w:r><w:t>2. Analyse des effets</w:t></w:r></w:p>'
+    + '<w:p><w:r><w:t>Le chiffre d’affaires est converti</w:t></w:r><w:r><w:footnoteReference w:id="7"/></w:r><w:r><w:t>.</w:t></w:r></w:p>'
+    + '</w:body></w:document>';
+  const notes = '<w:footnotes><w:footnote w:type="separator" w:id="-1"><w:p/></w:footnote><w:footnote w:id="7"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t xml:space="preserve"> Taux de change de la DGI pour 2025.</w:t></w:r></w:p></w:footnote></w:footnotes>';
+  const r = addComments({ documentXml: doc, commentsXml: null, relsXml: RELS, contentTypesXml: CT, footnotesXml: notes, comments: [
+    { extrait: '2. Analyse des effets', texte: 'titre' }, { extrait: '(1) Taux de change de la DGI pour 2025.', texte: 'note' } ] });
+  assert.equal(r.nonLocalises, 0);
+  assert.ok(/<\/w:sdt><w:p><w:commentRangeStart w:id="900000"\/>/.test(r.documentXml), 'titre du corps, pas le sommaire');
+  assert.ok(/<w:p><w:commentRangeStart w:id="900001"\/><w:r><w:t>Le chiffre/.test(r.documentXml), 'paragraphe qui appelle la note');
+  assert.ok(r.commentsXml.includes('(Note de bas de page n° 1) note'));
+});

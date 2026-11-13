@@ -34,6 +34,21 @@ export function paraText(p) {
   return decodeXml([...sansIns.matchAll(/<w:(?:t|delText)(?:\s[^>]*)?>([^<]*)<\/w:(?:t|delText)>/g)].map(m => m[1]).join(''));
 }
 
+// Notes de bas de page : numéro affiché (ordre des appels dans le corps) et texte.
+export function footnoteTexts(footnotesXml, documentXml) {
+  if (!footnotesXml) return [];
+  const ordre = [...String(documentXml || '').matchAll(/<w:footnoteReference\b[^>]*\bw:id="(\d+)"/g)].map(m => m[1]);
+  const out = [];
+  for (const m of footnotesXml.matchAll(/<w:footnote\b([^>]*)>([\s\S]*?)<\/w:footnote>/g)) {
+    if (/w:type="(?:separator|continuationSeparator|continuationNotice)"/.test(m[1])) continue;
+    const id = (/w:id="(-?\d+)"/.exec(m[1]) || [])[1];
+    const paras = [...m[2].matchAll(/<w:p\b(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(p => paraText(p[0]).replace(/[ \t\u00a0\u202f\u2009]+/g, ' ').trim()).filter(Boolean);
+    const k = ordre.indexOf(id);
+    if (paras.length) out.push({ id, num: k >= 0 ? k + 1 : null, paras, text: paras.join(' ') });
+  }
+  return out.sort((a, b) => (a.num || 1e9) - (b.num || 1e9));
+}
+
 function findPara(paras, extrait) {
   const e = normalize(extrait);
   if (!e) return -1;
@@ -60,17 +75,22 @@ function commentXml(id, texte, { author, initials, date }) {
  * @param {{texte:string, extrait:string}[]} p.comments
  * @returns {{documentXml, commentsXml, relsXml, contentTypesXml, ancres:number, nonLocalises:number}}
  */
-export function addComments({ documentXml, commentsXml, relsXml, contentTypesXml, comments, author = 'OCE Correction', initials = 'OCE', date }) {
+export function addComments({ documentXml, commentsXml, relsXml, contentTypesXml, footnotesXml = null, comments, author = 'OCE Correction', initials = 'OCE', date }) {
   date = date || new Date().toISOString().split('.')[0] + 'Z';
   const list = (comments || []).filter(c => c && c.texte);
   if (!list.length) return { documentXml, commentsXml, relsXml, contentTypesXml, ancres: 0, nonLocalises: 0 };
 
   // Paragraphes du corps (ceux qui ont du texte), dans l'ordre.
-  const re = /<w:p\b(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
+  // « top » : paragraphe hors tableau et hors contrôle de contenu (page de garde),
+  // seul endroit sûr pour un commentaire dont le passage n'a pas été retrouvé.
+  const re = /<w:(tbl|sdt)(?=[\s>])[^>]*>|<\/w:(tbl|sdt)>|<w:p\b(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g;
   const spans = [];
+  const prof = { tbl: 0, sdt: 0 };
   for (const m of documentXml.matchAll(re)) {
+    if (m[1]) { prof[m[1]]++; continue; }
+    if (m[2]) { prof[m[2]] = Math.max(0, prof[m[2]] - 1); continue; }
     const t = normalize(paraText(m[0]));
-    if (t) spans.push({ start: m.index, end: m.index + m[0].length, xml: m[0], text: t });
+    if (t) spans.push({ start: m.index, end: m.index + m[0].length, xml: m[0], text: t, top: prof.tbl === 0 && prof.sdt === 0, sdt: prof.sdt > 0 });
   }
   if (!spans.length) return { documentXml, commentsXml, relsXml, contentTypesXml, ancres: 0, nonLocalises: list.length };
 
@@ -81,10 +101,24 @@ export function addComments({ documentXml, commentsXml, relsXml, contentTypesXml
   const parPara = new Map(); // index de paragraphe -> [ids]
   const nouveaux = [];
   let nonLocalises = 0;
+  // Passage situé dans une note de bas de page : le commentaire est ancré sur le
+  // paragraphe du corps qui appelle la note.
+  const notes = footnoteTexts(footnotesXml, documentXml).map(n => ({ ...n, norm: normalize(n.text) }));
+  const versNote = extrait => {
+    const e = normalize(String(extrait || '').replace(/^\(\d+\)\s*/, ''));
+    if (!e) return null;
+    const n = notes.find(x => x.norm.includes(e) || (e.length >= 20 && x.norm.includes(e.slice(0, 50))));
+    if (!n) return null;
+    const i = spans.findIndex(s => new RegExp(`<w:footnoteReference\\b[^>]*\\bw:id="${n.id}"`).test(s.xml));
+    return i >= 0 ? { i, num: n.num } : null;
+  };
   list.forEach(c => {
-    let i = findPara(spans.map(s => s.text), c.extrait);
+    // D'abord hors contrôles de contenu : le sommaire répète les titres du rapport.
+    let i = findPara(spans.map(s => (s.sdt ? '' : s.text)), c.extrait);
+    if (i < 0) i = findPara(spans.map(s => s.text), c.extrait);
     let texte = c.texte;
-    if (i < 0) { i = 0; nonLocalises++; texte = '(Passage non localisé dans le document.)\n' + texte; }
+    if (i < 0) { const n = versNote(c.extrait); if (n) { i = n.i; texte = `(Note de bas de page n° ${n.num}) ` + texte; } }
+    if (i < 0) { i = Math.max(0, spans.findIndex(s => s.top)); nonLocalises++; texte = '(Passage non localisé dans le document.)\n' + texte; }
     const id = ++maxId;
     nouveaux.push(commentXml(id, texte, { author, initials, date }));
     if (!parPara.has(i)) parPara.set(i, []);

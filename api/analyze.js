@@ -21,7 +21,7 @@ const TYPE_LABELS = {
   lettre_ar: 'lettre du Conseil en arabe (مراسلة)',
   lettre_fr: 'lettre du Conseil en français',
   bilingue: 'document bilingue',
-  rapport: "extrait d'un rapport d'instruction (FR ou AR)",
+  rapport: "extrait d'un rapport d'instruction (en français)",
 };
 const isLetter = t => /^lettre_/.test(String(t || ''));
 
@@ -170,7 +170,7 @@ ${termC}
 - DISPOSITIF : « قرر ما يلي: », « المادة الأولى », « المادة الثانية ».
 - DÉLIBÉRATION : « تم التداول بشأن هذا القرار … », puis les signatures.
 Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`;
-  const structureRapport = `CE QUE TU CORRIGES : un EXTRAIT d'un rapport d'instruction (le rapport est découpé en parties relues séparément). Corrige UNIQUEMENT la langue :
+  const structureRapport = `CE QUE TU CORRIGES : un EXTRAIT d'un rapport d'instruction rédigé en français (le rapport est découpé en parties relues séparément ; les notes de bas de page sont regroupées à la fin du rapport). Corrige UNIQUEMENT la langue :
 - orthographe, lettres manquantes ou en trop, mots collés ou coupés ;
 - grammaire : accords (genre, nombre, participes), conjugaison, prépositions, articles ;
 - syntaxe : mot manquant ou répété, phrase incomplète ou bancale (corrige le minimum pour la rendre correcte) ;
