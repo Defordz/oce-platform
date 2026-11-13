@@ -282,6 +282,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [loadStep, setLoadStep] = useState(0);
   const [corrections, setCorrections] = useState([]);
   const [synthese, setSynthese] = useState("");
+  const [appel, setAppel] = useState(null);
+  const [grille, setGrille] = useState(null);
   const [score, setScore] = useState(null);
   const [statuses, setStatuses] = useState({});
   const [error, setError] = useState("");
@@ -373,6 +375,8 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
 
       setCorrections(parsed.corrections || []);
       setSynthese(parsed.synthese || "");
+      setAppel(parsed.appel || null);
+      setGrille(parsed.grille || null);
       setWarnings(parsed.warnings || []);
       setVerifications(parsed.verifications || []);
       setCategorie(parsed.categorie || null);
@@ -773,6 +777,20 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                   ))}
                 </div>
                 <div style={{fontSize:11.5,color:C.text2,lineHeight:1.6,padding:"9px 11px",background:C.cream2,borderRadius:6}}>{synthese}</div>
+                {grille && (grille.societes.length > 0 || grille.sens.length > 0) && (
+                  <details style={{marginTop:8,fontSize:11.5,color:C.text2}}>
+                    <summary style={{cursor:"pointer",color:C.navy2,fontWeight:500}}>Grille de relecture ({grille.societes.length} société(s), {grille.sens.length} fait(s) vérifié(s))</summary>
+                    <div style={{marginTop:6,lineHeight:1.6}}>
+                      {grille.societes.map((g, i) => {
+                        const pb = [g.forme_juridique === "manquante" && "forme juridique", ["a_corriger","absent"].includes(g.droit_applicable) && "droit applicable", ["a_corriger","absente"].includes(g.immatriculation) && "immatriculation", g.denomination_constante === false && "dénomination variable"].filter(Boolean);
+                        return <div key={"s"+i} dir="auto">{pb.length ? "⚠" : "✓"} {g.societe}{pb.length ? " : " + pb.join(", ") : ""}</div>;
+                      })}
+                      {grille.sens.filter(f => f.verdict === "incoherent").map((f, i) => <div key={"f"+i} dir="auto" style={{color:C.amber}}>⚠ {f.fait}</div>)}
+                      {grille.sens.length > 0 && !grille.sens.some(f => f.verdict === "incoherent") && <div>✓ Aucun contresens relevé dans les faits du communiqué.</div>}
+                    </div>
+                  </details>
+                )}
+                {appel && <div style={{marginTop:6,fontSize:10,color:C.text3}}>Modèle : {appel.modele} · température : {appel.temperature === 0 ? "0 (réponses stables)" : "par défaut (réponses variables)"}</div>}
               </Card>
 
               {verifications.length > 0 && (
