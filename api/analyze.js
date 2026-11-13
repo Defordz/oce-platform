@@ -176,7 +176,8 @@ Une consigne qui précise un périmètre ne s'applique QUE dans ce périmètre.`
 - syntaxe : mot manquant ou répété, phrase incomplète ou bancale (corrige le minimum pour la rendre correcte) ;
 - ponctuation et typographie (espaces, majuscules, guillemets, parenthèses).
 CE QUE TU NE TOUCHES PAS :
-- le raisonnement, le style et le vocabulaire technique : ne reformule jamais une phrase correcte ;
+- le raisonnement, le style et le vocabulaire technique : ne reformule jamais une phrase correcte, et ne supprime aucun mot sauf un mot répété ou parasite (« marché de produit », « marché géographique », « contrôle exclusif » sont des termes techniques) ;
+- les espaces de mise en page (suite d'espaces, espaces en fin de ligne) et les références en arabe (numéros de décisions et de dossiers comme « 25/ ق /46 ») ;
 - les chiffres, montants, pourcentages, dates, dénominations sociales, noms de personnes, intitulés de marchés ;
 - les citations entre guillemets et les extraits de textes juridiques ;
 - la structure du document : l'extrait commence ou finit parfois au milieu d'une section, ce n'est pas une erreur.
@@ -389,6 +390,22 @@ function canon(str) {
 export const NOTE_PSEUDONYMES = `NOMS CODÉS : pour la confidentialité, les noms de sociétés et de personnes ont été remplacés, avant l'envoi, par des codes entre crochets : [SOC_1] (société ou groupe), [PERS_2] (prénom ou nom d'une personne), [ADR_3] (adresse complète), [ID_4] (numéro d'immatriculation : registre du commerce, ICE…), [NOM_5] (autre nom). Un même code désigne toujours le même nom, la même adresse ou le même numéro ; un code à double numéro ([SOC_1_2]) est une autre graphie du même nom (en majuscules, par exemple). Les mots génériques (SA, Groupe, Holding, Maroc…) sont restés en clair : « [SOC_1] SA » et « le groupe [SOC_1] » désignent la même société.
 Traite chaque code comme un nom propre que tu ne lis pas : recopie-le exactement, crochets compris, dans tes extraits ; ne corrige jamais l'élision ou l'article devant un code (« de [SOC_1] » reste tel quel) ; n'en déduis ni genre ni nombre ; ne propose aucune correction qui ajoute, retire ou modifie un code.`;
 
+// Rapports : ni les espaces de mise en page (suite d'espaces, espaces en bord de
+// ligne ou d'extrait), ni les passages en arabe (numéros de décisions et de dossiers,
+// dont l'affichage dépend des espaces autour des lettres arabes).
+export function horsRapport(c, text, docType) {
+  if (docType !== 'rapport' || !c) return false;
+  if (/[\u0600-\u06FF]/.test(c.original || '')) return true;
+  const sansEsp = x => String(x || '').replace(/[\s\u00a0\u202f\u2009]+/g, '');
+  if (sansEsp(c.original) !== sansEsp(c.suggested)) return false;
+  // Espaces seuls, en bord d'extrait : le texte relu a ses espaces réduits, une telle
+  // correction tomberait sur une suite d'espaces de mise en page du fichier Word.
+  if (String(c.original).trim() === String(c.suggested).trim()) return true;
+  const i = text.indexOf(c.original);
+  const bordLigne = i >= 0 && ((/^[ \t\u00a0]/.test(c.original) && (i === 0 || text[i - 1] === '\n')) || (/[ \t\u00a0]$/.test(c.original) && (i + c.original.length === text.length || text[i + c.original.length] === '\n')));
+  return /[ \t\u00a0]{3,}/.test(c.original) || bordLigne;
+}
+
 export function realignOriginal(text, original) {
   if (!original || text.includes(original)) return original;
   const T = canon(text), O = canon(original).norm.trim();
@@ -493,7 +510,7 @@ export default async function handler(req, res) {
       const parModele = applyRules(ctx.slice(0, i - a) + c.suggested + ctx.slice(i - a + c.original.length), docType, consignes);
       return parRegles !== ctx && n(parRegles) === n(parModele);
     };
-    const filtered = realigned.filter(c => c && !(PLACEHOLDER.test(c.suggested || '') && !PLACEHOLDER.test(c.original || '')) && !regleSeule(c));
+    const filtered = realigned.filter(c => c && !(PLACEHOLDER.test(c.suggested || '') && !PLACEHOLDER.test(c.original || '')) && !regleSeule(c) && !horsRapport(c, text, docType));
     const claudeCorr = harmonizeWithRules(filtered, docType, consignes)
       .filter(c => !touchesExclusive(c)).map(aligne).filter(c => c.suggested.replace(/\s+/g, ' ').trim() !== c.original.replace(/\s+/g, ' ').trim());
     // Décisions : le bloc des signatures (après « تم التداول ») n'est jamais retouché.

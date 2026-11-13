@@ -15,6 +15,8 @@
 // caractère, ce qui permet d'appliquer les corrections dans le document d'origine.
 // Fonctions pures : testables hors navigateur.
 
+import { paraText } from './wordComments.js';
+
 const L = 'A-Za-zÀ-ÖØ-öø-ÿŒœ';
 const RE_MOT = new RegExp(`[${L}]+`, 'g');
 const MAJ = /^[A-ZÀ-ÖØ-ÞŒ]/;
@@ -28,7 +30,7 @@ const RE_CODE = /\[\s*((?:SOC|PERS|NOM|ADR|ID)_\d+(?:_\d+)?)\s*\]|\b((?:SOC|PERS
 
 // Mots jamais remplacés : formes juridiques, mots génériques des dénominations,
 // institutions, titres, structure du rapport, pays, sigles courants.
-const FORMES = 'sa sas sasu sarl sarlau au snc sca scs gie gmbh ltd limited llc llp lp inc corp plc bv nv ag spa se sl srl sci co cie ste sté';
+const FORMES = 'sa sas sasu sarl sarlau au sau snc sca scs scsp gie gmbh kg kgaa ltd limited llc llp lp gp inc corp plc bv nv ag spa se sl srl sci co cie ste sté aps as ab oy oyj asa pte pty bhd sdn ltda lda kft zrt sro bvba sprl sicav sicar raif fcp';
 const GENERIQUES = `groupe group groupes holding holdings corporation company compagnie companies international internationale industries industrie
   industriel industriels industrielle services service solutions healthcare health pharma pharmaceutical pharmaceuticals pharmaceutique pharmaceutiques
   laboratoire laboratoires laboratories labs motors mobility automotive care distribution distributions trading invest investment investments capital
@@ -37,7 +39,10 @@ const GENERIQUES = `groupe group groupes holding holdings corporation company co
   assurance assurances immobilier immobilière real estate energy énergie food foods agro développement development participations participation
   management fund fonds equity ventures logistics logistique transport transports retail market markets consumer products produits brands
   commerce commercial commerciale alimentaire alimentaires cosmétique cosmétiques promotion maghreb médical médicale medical santé beauté hygiène
-  chimie chimique pharmacie pharmacies nationale national atlantique sud nord centre new nouvelle nouveaux import export`;
+  chimie chimique pharmacie pharmacies nationale national atlantique sud nord centre new nouvelle nouveaux import export
+  bidco midco topco holdco newco finco propco acquisition acquisitions fund funds associates general partner investors investor
+  us uk usa united kingdom states america american denmark danish netherlands dutch germany german spain spanish italy italian ireland irish
+  switzerland swiss belgium luxembourg asia pacific emea mena worldwide world`;
 const INSTITUTIONS = `conseil concurrence commission permanente section ministère ministre ministres direction directeur directrice général générale généraux
   adjoint adjointe rapporteur rapporteure rapporteurs président présidente vice secrétariat secrétaire gouvernement royaume roi majesté état etat
   loi décret dahir arrêté code bulletin officiel tribunal cour internet impôts douanes trésor office agence autorité haut haute union européenne
@@ -53,6 +58,18 @@ const INSTITUTIONS = `conseil concurrence commission permanente section ministè
   sénégal côte ivoire turquie émirats arabes arabie saoudite qatar canada brésil russie`;
 const PARTICULES = 'de du des d la le les l et el ben ibn bel ait aït van von di da del della der den y';
 const STOP = new Set(`${FORMES} ${GENERIQUES} ${INSTITUTIONS} ${PARTICULES}`.split(/\s+/).filter(Boolean));
+// Suggestions seulement : lieux et mots courants qui prennent souvent une majuscule
+// (titres de colonnes, débuts de ligne). Une dénomination qui les contient reste repérée.
+const LIEUX = new Set(`afrique asie europe amérique océanie danemark angleterre galles écosse irlande londres paris york delaware jersey guernesey
+  amsterdam bruxelles genève zurich madrid barcelone milan rome lisbonne francfort munich berlin dubaï dubai abou dhabi doha riyad caire tunis alger
+  dakar abidjan lagos nairobi johannesburg singapour hong kong tokyo pékin shanghai mumbai casablanca rabat tanger marrakech fès agadir kénitra
+  mohammedia malaisie argentine australie costa rica macédoine serbie pakistan ukraine vietnam mexique chili colombie pérou indonésie thaïlande
+  philippines corée nigeria kenya ghana grèce pologne roumanie hongrie autriche suède norvège finlande israël iran irak liban jordanie koweït
+  bahreïn oman mauritanie mali niger tchad cameroun gabon congo angola madagascar maurice danois danoise américain américaine britannique
+  allemand allemande français française italien italienne espagnol espagnole néerlandais néerlandaise luxembourgeois luxembourgeoise`.split(/\s+/).filter(Boolean));
+const COURANTS = new Set(`pièce pièces suite street level stock partner pet animal world city french forfait forfaits régie plateforme organigramme
+  schéma exercice montant activité activités secteur segment marché marchés produit ventes gamme gammes nature client clients fournisseur
+  fournisseurs opérateur opérateurs part parts chiffre affaires importance catégorie catégories pays origine destination volume valeur`.split(/\s+/).filter(Boolean));
 const SUFFIXES_FR = /(?:tions?|sions?|ments?|ités?|ages?|ances?|ences?|eurs?|euses?|iques?|ismes?|istes?|ées?|és?|ants?|antes?|aires?|oires?|ures?|ives?|ifs?|ibles?|ables?|eries?|iats?|ogies?|omies?|èmes?|aises?|elles?|ales|aux)$/;
 
 // Mots distinctifs d'une dénomination ou d'un nom de personne.
@@ -94,7 +111,7 @@ function enDebut(text, i) {
  * Repère les noms de sociétés et de personnes.
  * @returns {{entites: Array<{cle, type, libelle, formes:{forme:string,n:number}[], n:number, source:'ancre'|'personne'|'suggestion', coche:boolean, premier:number}>}}
  */
-export function detecterNoms(text) {
+export function detecterNoms(text, { documentXml = null } = {}) {
   text = String(text || '');
   const occ = indexer(text);
   const minuscules = new Set([...occ.keys()].filter(w => w === w.toLowerCase()));
@@ -133,11 +150,11 @@ export function detecterNoms(text) {
   const reGuillAncre = new RegExp(`«[ \\u00a0]*((?:${ANCRES_MIN.split('|').map(a => a[0].toUpperCase() + a.slice(1)).join('|')})[ \\u00a0][^»\\n]{1,70}?)[ \\u00a0]*»`, 'gu');
   for (const m of text.matchAll(reGuillAncre)) denomination(m[1]);
   const motMaj = `[A-ZÀ-ÖØ-ÞŒ][${L}'’&.-]*`;
-  const reAncreN = new RegExp(`(?:^|[^${L}])(?:${ANCRES})[ \\u00a0]+(${motMaj}(?:[ \\u00a0]+(?:(?:&|et|de|du|des)[ \\u00a0]+)?${motMaj}){0,4})`, 'gu');
+  const reAncreN = new RegExp(`(?:^|[^${L}])(?:${ANCRES})[ \\u00a0]+(${motMaj}(?:[ \\u00a0]+(?:(?:&|et|de|du|des|e|y|und|and|of|di|del|della|van|von|der|für|for)[ \\u00a0]+)?${motMaj}){0,4})`, 'gu');
   for (const m of text.matchAll(reAncreN)) motsDistinctifs(m[1]).forEach(w => { if (MAJ.test(w)) ajouter(w, 'SOC', 'ancre'); });
 
   // 3. Dénominations suivies d'une forme juridique : « Somapharma SARL », « CFAO Motors Maroc S.A. ».
-  const reForme = new RegExp(`((?:${motMaj}[ \\u00a0]+(?:(?:&|de|du|des)[ \\u00a0]+)?){1,5})(?:S\\.?A\\.?S\\.?U?|S\\.?A\\.?R\\.?L\\.?(?:[ \\u00a0]?A\\.?U\\.?)?|SARLAU|S\\.A\\.|SA|SCA|SNC|GmbH|Ltd|LLC|LLP|Inc|PLC|Plc|AG|B\\.?V\\.?|N\\.?V\\.?|S\\.p\\.A\\.|SpA)(?![${L}])`, 'gu');
+  const reForme = new RegExp(`((?:${motMaj}[ \\u00a0]+(?:(?:&|et|de|du|des|e|y|und|and|of|di|del|della|van|von|der|für|for)[ \\u00a0]+)?){1,5})(?:S\\.?A\\.?S\\.?U?|S\\.?A\\.?R\\.?L\\.?(?:[ \\u00a0]?A\\.?U\\.?)?|SARLAU|S\\.A\\.|SA|SCA|SCSp|SCSP|SCS|SNC|GmbH|KG|Ltd|Limited|LLC|LLP|L\\.?P\\.|LP|Inc|Corporation|Corp|PLC|Plc|AG|ApS|A\\/S|AB|Oy|B\\.?V\\.?|N\\.?V\\.?|S\\.p\\.A\\.|SpA|S\\.r\\.l\\.|Srl|S\\.?à[ \\u00a0]?r\\.?l\\.?|Sàrl|Pte|Pty|Ltda)(?![${L}])`, 'gu');
   for (const m of text.matchAll(reForme)) {
     motsDistinctifs(m[1]).forEach(w => {
       // Hors ancre explicite, un mot qui existe aussi en minuscules est un mot courant (« Ainsi », « Selon »).
@@ -151,6 +168,20 @@ export function detecterNoms(text) {
   // Sigle donné juste après une dénomination : « Commerce et Distribution… » (« CODIPAC »).
   const reSigle = /»[ \u00a0]*\([ \u00a0]*«[ \u00a0]*([^»\n]{2,40}?)[ \u00a0]*»[ \u00a0]*\)/gu;
   for (const m of text.matchAll(reSigle)) motsDistinctifs(m[1]).forEach(w => { if (MAJ.test(w) && !minuscules.has(w.toLowerCase())) ajouter(w, 'SOC', 'ancre'); });
+  // Tableaux : colonne dont l'en-tête annonce des sociétés (« Société », « Client », « Fournisseur », « Opérateur »…).
+  if (documentXml) {
+    const ENTETE = /^(?:sociétés?|entreprises?|clients?|fournisseurs?|opérateurs?|concurrents?|groupes?|filiales?|participations?|dénominations?( sociales?)?|raison sociale|acquéreurs?|cibles?|actionnaires?|associés?|partenaires?|distributeurs?|laboratoires?|importateurs?|grossistes?|prestataires?|entités?|parties?( à l['’]opération)?|nom( de la société)?)$/i;
+    const cellule = c => [...c.matchAll(/<w:p\b(?:\s[^>]*)?>[\s\S]*?<\/w:p>/g)].map(p => paraText(p[0])).join(' ').replace(/[\s\u00a0]+/g, ' ').trim();
+    for (const t of documentXml.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)) {
+      const lignes = [...t[0].matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)].map(r => [...r[0].matchAll(/<w:tc\b[^>]*>[\s\S]*?<\/w:tc>/g)].map(c => cellule(c[0])));
+      const k = lignes.length > 1 && lignes[0].length === 1 ? 1 : 0; // ligne de titre fusionnée au-dessus des en-têtes
+      if (lignes.length < k + 2) continue;
+      lignes[k].forEach((h, j) => {
+        if (!ENTETE.test(h)) return;
+        lignes.slice(k + 1).forEach(r => motsDistinctifs(r[j] || '').forEach(w => { if (MAJ.test(w) && !minuscules.has(w.toLowerCase())) ajouter(w, 'SOC', 'ancre'); }));
+      });
+    }
+  }
 
   // 5. Adresses et numéros d'immatriculation : remplacés en entier, tels qu'ils sont écrits.
   const zones = []; // passages couverts, pour ne pas en tirer de suggestions
@@ -161,12 +192,14 @@ export function detecterNoms(text) {
     const cle = type.toLowerCase() + ':' + t.toLowerCase();
     if (!ent.has(cle)) ent.set(cle, { cle, type, source: 'ancre', phrase: t });
   };
+  const dansZone = i => zones.some(([a, b]) => i >= a && i < b);
   const NUM = `(?:[A-Z][ \\u00a0]?)?\\d[\\d \\u00a0.]*\\d|\\d`;
-  const reRC = new RegExp(`(?:registre[ \\u00a0]+du[ \\u00a0]+commerce(?:[ \\u00a0]+et[ \\u00a0]+des[ \\u00a0]+sociétés)?(?:[ \\u00a0]+(?:de|d['’])[ \\u00a0]*[^\\s,;.]+(?:[ -][A-ZÀ-ÖØ-Þ][^\\s,;.]*)*)?|immatriculée?s?)[ \\u00a0]+sous[ \\u00a0]+le[ \\u00a0]+(?:numéro|n°)[ \\u00a0]*(${NUM})`, 'giu');
+  const reRC = new RegExp(`(?:registre[ \\u00a0]+du[ \\u00a0]+commerce(?:[ \\u00a0]+et[ \\u00a0]+des[ \\u00a0]+sociétés)?(?:[ \\u00a0]+(?:de|d['’])[ \\u00a0]*[^\\s,;.]+(?:[ -][A-ZÀ-ÖØ-Þ][^\\s,;.]*)*)?|immatriculée?s?|constituée?s?[^.;\\n]{0,60}?)[ \\u00a0]+sous[ \\u00a0]+le[ \\u00a0]+(?:numéro|n°)(?:[ \\u00a0]+d['’](?:enregistrement|immatriculation))?[ \\u00a0]*(${NUM})|(?:numéro|n°)[ \\u00a0]+d['’](?:enregistrement|immatriculation)[ \\u00a0]*:?[ \\u00a0]*(${NUM})`, 'giu');
   const reIdent = new RegExp(`(?:[Ii]dentifiant[ \\u00a0]+[Cc]ommun[ \\u00a0]+de[ \\u00a0]+l['’][ \\u00a0]*[Ee]ntreprise(?:[ \\u00a0]*\\([ \\u00a0]*ICE[ \\u00a0]*\\))?|[Ii]dentifiant[ \\u00a0]+[Ff]iscal|[Pp]atente|[Tt]axe[ \\u00a0]+[Pp]rofessionnelle|(?<![${L}])(?:ICE|IF|CNSS|RCS|R\\.?C\\.?|SIREN|SIRET)(?![${L}]))[ \\u00a0]*(?:[A-ZÀ-ÖØ-Þ][${L}-]+[ \\u00a0]+)?(?:n°|N°|numéro|:)?[ \\u00a0]*:?[ \\u00a0]*(${NUM})`, 'gu');
   for (const re of [reRC, reIdent]) for (const m of text.matchAll(re)) {
-    if (/^\\d{4}$/.test(m[1].trim())) continue; // une année n'est pas un numéro d'immatriculation
-    literal('ID', m[1], m.index + m[0].length - m[1].length);
+    const num = m[1] || m[2];
+    if (!num || /^\\d{4}$/.test(num.trim())) continue; // une année n'est pas un numéro d'immatriculation
+    literal('ID', num, m.index + m[0].length - num.length);
   }
   // Adresse : numéro (ou kilomètre) et voie, puis code postal, quartier, ville.
   // Un mot de voie seul (« mise en place », « au cours de ») ne suffit pas : il faut
@@ -175,7 +208,38 @@ export function detecterNoms(text) {
   const reAdr = new RegExp(`(?<![${L}])((?:(?:n°|N°|numéros?|nos?\\.?)[ \\u00a0]*\\d+[A-Za-z]?(?:[ \\u00a0]*[-–/][ \\u00a0]*\\d+)?(?:[ \\u00a0]*(?:bis|ter))?[ \\u00a0]*,?[ \\u00a0]*|(?:kilomètre|km)[ \\u00a0]*\\d+(?:[,.]\\d+)?[ \\u00a0]+(?:(?:de|du|sur)[ \\u00a0]+(?:la[ \\u00a0]+|l['’])?)?|\\d+[A-Za-z]?(?:[ \\u00a0]*[-–/][ \\u00a0]*\\d+)?(?:[ \\u00a0]*(?:bis|ter))?[ \\u00a0]*,?[ \\u00a0]*)?)(?:${VOIE})(?![${L}])[^,;.\\n()«»]{0,70}?(?=[ \\u00a0]+à[ \\u00a0]|[,;.\\n()«»]|$)`, 'giu');
   const SEG = new RegExp(`^(?:,[ \\u00a0]*(?:\\d{4,5}[ \\u00a0]+[A-ZÀ-ÖØ-Þ][${L}'’ -]{1,40}?|(?:${VOIE})(?![${L}])[^,;.\\n()«»]{0,50}?|(?:à[ \\u00a0]+)?[A-ZÀ-ÖØ-Þ][${L}'’-]+(?:[ \\u00a0-][A-ZÀ-ÖØ-Þ][${L}'’-]+){0,3})|[ \\u00a0]+à[ \\u00a0]+[A-ZÀ-ÖØ-Þ][${L}'’-]+(?:[ \\u00a0-][A-ZÀ-ÖØ-Þ][${L}'’-]+){0,2})(?=[ \\u00a0]*(?:[,;.\\n()«»]|à[ \\u00a0]|$))`, 'u');
   const INTRO = /(?:siège|situé|située|situés|sis|sise|sises|domicili|adresse|établie?s?|implantée?s?)[^.;\n]{0,40}$/i;
+  // Adresse annoncée (« dont le siège social est situé … ») : segment par segment, tant
+  // que chacun commence par un chiffre, une majuscule ou un mot d'adresse ; on s'arrête
+  // à « ; », à la fin de la phrase ou à une proposition (« , immatriculée », « , laquelle »).
+  // Retenue seulement si elle comporte un numéro ou une voie (une ville seule n'est pas une adresse).
+  const MOT_ADR = `n°|numéros?|nos?\\.?|${VOIE}|comté|county|étage|suite|level|bureau|bâtiment|tour|floor|street|road|drive|lane|avenue|way|pike|strasse|straße|platz|weg|gade|vej|via|calle`;
+  const reIntro = /(?:siège(?:[ \u00a0]+social)?(?:[ \u00a0]+est)?(?:[ \u00a0]+(?:situé|établi|fixé)e?)?|(?:situé|sis|domicilié|établi|implanté)e?s?)[ \u00a0]+(?:(?:au|aux|à|en|dans)[ \u00a0]+(?:l['’][ \u00a0]*)?)?/giu;
+  const DEBUT_SEG = new RegExp(`^(?:\\d|[A-ZÀ-ÖØ-Þ]|(?:${MOT_ADR})(?![${L}])|(?:au|aux|en)[ \\u00a0]+[A-ZÀ-ÖØ-Þ])`, 'u');
+  const SEG_TXT = /^[^,;\n«»]{1,90}?(?=,|;|\n|$|\.(?:[ \u00a0]+[A-ZÀ-ÖØ-Þ]|[ \u00a0]*$|[ \u00a0]*\n))/u;
+  const CLAUSE = /[ \u00a0](?:et|qui|dont|où|lequel|laquelle|lesquels|lesquelles|ainsi|soit|pour|avec)[ \u00a0]/;
+  const ADR_OK = new RegExp(`\\d|(?:^|[^${L}])(?:${MOT_ADR})(?![${L}])`, 'iu');
+  for (const m of text.matchAll(reIntro)) {
+    const debut = m.index + m[0].length;
+    let fin = debut, pos = debut, n = 0;
+    while (n < 10) {
+      const reste = text.slice(pos, pos + 120);
+      if (!DEBUT_SEG.test(reste)) break;
+      const sg = SEG_TXT.exec(reste);
+      if (!sg) break;
+      const c = CLAUSE.exec(sg[0]);
+      const seg = c ? sg[0].slice(0, c.index) : sg[0];
+      fin = pos + seg.replace(/[ \u00a0]+$/, '').length;
+      n++;
+      if (c) break;
+      const suite = /^,[ \u00a0]*/.exec(text.slice(pos + sg[0].length));
+      if (!suite) break;
+      pos = pos + sg[0].length + suite[0].length;
+    }
+    const adr = text.slice(debut, fin);
+    if (n && ADR_OK.test(adr) && adr.length >= 6) literal('ADR', adr, debut);
+  }
   for (const m of text.matchAll(reAdr)) {
+    if (dansZone(m.index)) continue;
     if (!m[1] && !INTRO.test(text.slice(Math.max(0, m.index - 60), m.index))) continue;
     let fin = m.index + m[0].length, k;
     for (k = 0; k < 6; k++) {
@@ -185,7 +249,6 @@ export function detecterNoms(text) {
     }
     literal('ADR', text.slice(m.index, fin), m.index);
   }
-  const dansZone = i => zones.some(([a, b]) => i >= a && i < b);
 
   // 6. Suggestions (décochées) : autres mots capitalisés jamais écrits en minuscules
   //    (concurrents des tableaux, mais aussi lieux et marques : à trier par l'utilisateur).
@@ -196,6 +259,7 @@ export function detecterNoms(text) {
     if (!pos.length) continue;
     // Terminaisons de mots français courants (titres de colonnes, débuts de phrase).
     if (w !== w.toUpperCase() && SUFFIXES_FR.test(w)) continue;
+    if (LIEUX.has(cle) || COURANTS.has(cle)) continue;
     // Un mot qui n'apparaît qu'en tête de phrase hors tableau est le plus souvent un mot courant.
     const milieu = pos.some(i => !enDebut(text, i));
     const ligneCourte = pos.some(i => { const a = text.lastIndexOf('\n', i) + 1, b = text.indexOf('\n', i); return (b < 0 ? text.length : b) - a <= 60; });
