@@ -51,3 +51,22 @@ test('garde-fous : emplacements à compléter et doublons des règles écartés,
   assert.ok(sugg.includes('مجموعتي (Volkswagen) و(Gotion) يخص'));
   assert.ok(res.body.warnings.some(w => w.kind === 'grille' && w.message.includes('Gotion GmbH')));
 });
+
+test('doublon d’une règle de pays proposé sans la virgule (Sonnet) : écarté', async () => {
+  process.env.ANTHROPIC_API_KEY = 'k';
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't', name: 'rapport_corrections', input: {
+    controle_societes: [], controle_sens: [], synthese: 's', score: 7, corrections: [
+      { type: 'forme', code: 'A-14', original: 'République populaire de Chine', suggested: 'جمهورية الصين الشعبية', reason: 'x' },
+      { type: 'forme', code: 'A-14', original: 'Allemagne .', suggested: 'ألمانيا.', reason: 'y' },
+      { type: 'forme', code: '', original: 'بـجمهورية', suggested: 'بجمهورية', reason: 'z' } ] } }] }) });
+  const { default: handler } = await import('../api/analyze.js');
+  const res = { setHeader() {}, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; } };
+  const text = 'يقع مقرها بـجمهورية الصين الشعبية بـ Hefei, province d’Anhui, République populaire de Chine.\nBerliner Ring 2, 38440 Wolfsburg, Allemagne .';
+  await handler({ method: 'POST', headers: {}, body: { docType: 'cp_ar', opts: { forme: true }, consignes: seed, text } }, res);
+  globalThis.fetch = saved;
+  const o = res.body.corrections.map(c => c.original);
+  assert.equal(o.filter(x => x.includes('Chine')).length, 1);
+  assert.equal(o.filter(x => x.includes('Allemagne')).length, 1);
+  assert.ok(o.includes('بـجمهورية'));
+});

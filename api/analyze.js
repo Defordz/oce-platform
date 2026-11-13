@@ -81,7 +81,7 @@ const GRILLE = {
         societe: { type: 'string' },
         forme_juridique: { type: 'string', enum: ['indiquee', 'manquante', 'sans_objet'], description: "« manquante » seulement si le nom porte une forme sans ambiguïté (SA, S.A., SAS, SARL, AG, GmbH, S.p.A., S.A.U., SE) et que la description ne l'écrit pas. « Co., Ltd », « Ltd », « Inc. », « LLC » ou aucun sigle : « sans_objet »." },
         droit_applicable: { type: 'string', enum: ['conforme', 'a_corriger', 'absent', 'sans_objet'], description: "Formule consacrée : « de droit [pays] » / « خاضعة للقانون [البلد] »." },
-        immatriculation: { type: 'string', enum: ['conforme', 'a_corriger', 'absente', 'sans_objet'], description: "Formule consacrée : « immatriculée au Registre du Commerce de [ville] sous le numéro … » / « مسجلة في السجل التجاري ب… تحت رقم … »." },
+        immatriculation: { type: 'string', enum: ['conforme', 'a_corriger', 'absente', 'sans_objet'], description: "Formule consacrée : « immatriculée au Registre du Commerce de [ville] sous le numéro … » / « مسجلة في السجل التجاري ب… تحت رقم … ». « a_corriger » seulement pour une formule fautive ; une précision supplémentaire (tribunal tenant le registre, « Registre du commerce et des sociétés » d'un pays étranger) est conforme et ne se retire jamais." },
         denomination_constante: { type: 'boolean', description: 'La dénomination est écrite exactement de la même façon partout dans le document (majuscules, ponctuation, Ltd./S.A.).' },
       },
       required: ['societe', 'forme_juridique', 'droit_applicable', 'immatriculation', 'denomination_constante'],
@@ -458,7 +458,19 @@ export default async function handler(req, res) {
     // Garde-fous : jamais d'emplacement à compléter inséré par le modèle ; jamais
     // une correction que les règles automatiques font déjà (doublon).
     const PLACEHOLDER = /\[[^\]]{0,20}\]|\[\.\.\.\]|…\]/;
-    const regleSeule = c => { const r = applyRules(c.original, docType, consignes); return r !== c.original && r.replace(/\s+/g, ' ').trim() === String(c.suggested || '').replace(/\s+/g, ' ').trim(); };
+    // Doublon d'une règle : l'extrait est relu avec quelques caractères de contexte
+    // (une règle de pays exige la virgule qui précède) ; si les règles seules
+    // donnent le même résultat que la suggestion du modèle, celle-ci est écartée.
+    const n = s => String(s || '').replace(/\s+/g, ' ').trim();
+    const regleSeule = c => {
+      const i = text.indexOf(c.original);
+      if (i < 0) { const r = applyRules(c.original, docType, consignes); return r !== c.original && n(r) === n(c.suggested); }
+      const a = Math.max(0, i - 6), b = Math.min(text.length, i + c.original.length + 6);
+      const ctx = text.slice(a, b);
+      const parRegles = applyRules(ctx, docType, consignes);
+      const parModele = applyRules(ctx.slice(0, i - a) + c.suggested + ctx.slice(i - a + c.original.length), docType, consignes);
+      return parRegles !== ctx && n(parRegles) === n(parModele);
+    };
     const filtered = realigned.filter(c => c && !(PLACEHOLDER.test(c.suggested || '') && !PLACEHOLDER.test(c.original || '')) && !regleSeule(c));
     const claudeCorr = harmonizeWithRules(filtered, docType, consignes)
       .filter(c => !touchesExclusive(c)).map(aligne).filter(c => c.suggested.replace(/\s+/g, ' ').trim() !== c.original.replace(/\s+/g, ' ').trim());

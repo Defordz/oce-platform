@@ -292,7 +292,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   // Lettres : date d'envoi prevue (base des delais) et verification en ligne des denominations.
   const [envoi, setEnvoi] = useState(() => nextWorkingDay());
   const [verifierEnLigne, setVerifierEnLigne] = useState(true);
-  const [modele, setModele] = useState("claude-opus-5-5");
+  const modele = "claude-opus-5-5"; // comparé à Sonnet 5.5 le 13/11/2026 : Opus retenu
   const [verifications, setVerifications] = useState([]);
   const [destinataire, setDestinataire] = useState("auto");
   const [categorie, setCategorie] = useState(null);
@@ -731,13 +731,6 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                 </div>
               </div>
             ))}
-            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
-              <span style={{fontSize:10.5,color:C.text3}}>Modèle (essai)</span>
-              <select value={modele} onChange={e => setModele(e.target.value)} style={{flex:1,padding:"4px 6px",border:`1px solid ${C.border2}`,borderRadius:6,fontSize:11,color:C.text2,background:"#fff"}}>
-                <option value="claude-opus-5-5">Opus 5.5 (actuel)</option>
-                <option value="claude-sonnet-5-5">Sonnet 5.5 (moins cher)</option>
-              </select>
-            </div>
             <button onClick={analyze} disabled={phase==="loading"} style={{width:"100%",marginTop:9,padding:"9px",border:"none",borderRadius:7,background:phase==="loading"?"#9ca3af":C.navy,color:"#fff",fontSize:13,fontWeight:500,cursor:phase==="loading"?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
               {phase==="loading" ? <><Spinner/><span>Analyse en cours…</span></> : <><span>🔍</span><span>Analyser et corriger</span></>}
             </button>
@@ -798,7 +791,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
                     </div>
                   </details>
                 )}
-                {appel && <div style={{marginTop:6,fontSize:10,color:C.text3}}>Modèle : {appel.modele} · température : {appel.temperature === 0 ? "0 (réponses stables)" : "par défaut (réponses variables)"}</div>}
+                {appel && <div style={{marginTop:6,fontSize:10,color:C.text3}}>Modèle : {appel.modele}</div>}
               </Card>
 
               {verifications.length > 0 && (
