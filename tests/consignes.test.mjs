@@ -22,3 +22,14 @@ test('fusion du référentiel', async () => {
   assert.ok(list.find(c => c.code === 'PERSO'));
   assert.deepEqual(mergeSeed(list, ref, '2026-11-10').changed, []);
 });
+
+test('F-19 et A-15 (essai VW / Gotion)', async () => {
+  const { applyRules } = await import('../api/analyze.js');
+  const f = t => applyRules(t, 'cp_fr', seed.filter(c => c.code === 'F-19'));
+  assert.equal(f('société de droit marocain inscrite au registre du commerce de Rabat'), 'société de droit marocain immatriculée au Registre du Commerce de Rabat');
+  assert.equal(f('immatriculée au registre du commerce du tribunal'), 'immatriculée au Registre du Commerce du tribunal');
+  assert.equal(f('immatriculée au Registre du commerce et des sociétés du Luxembourg'), 'immatriculée au Registre du commerce et des sociétés du Luxembourg');
+  const a = t => applyRules(t, 'cp_ar', seed.filter(c => c.code === 'A-15'));
+  assert.equal(a('القطاع الاقتصادي المعني:\nقطاع صناعة السيارات.'), 'القطاعات الاقتصادية المعنية:\nقطاع صناعة السيارات.');
+  assert.equal(a('يهم القطاع الاقتصادي المعني بالعملية'), 'يهم القطاع الاقتصادي المعني بالعملية');
+});
