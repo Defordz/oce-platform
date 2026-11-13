@@ -181,6 +181,12 @@ CE QUE TU NE TOUCHES PAS :
 - les chiffres, montants, pourcentages, dates, dénominations sociales, noms de personnes, intitulés de marchés ;
 - les citations entre guillemets et les extraits de textes juridiques ;
 - la structure du document : l'extrait commence ou finit parfois au milieu d'une section, ce n'est pas une erreur.
+À VÉRIFIER EN PARTICULIER (erreurs fréquentes dans ces rapports) :
+- virgule entre le verbe et son complément (« a notifié au Conseil de la concurrence, un projet » : la virgule se retire) ;
+- accord d'un adjectif ou d'un participe avec le nom auquel il se rapporte réellement (« le montant des achats correspondant », « telles que ») ;
+- mot manquant : tournure impersonnelle sans « il » (« il sera procédé »), préposition ou article oubliés (« situé chez », « affectée par le ») ;
+- préposition et article (« prise de contrôle », « pour les besoins de ») ;
+- majuscules accentuées (« l'Économie ») et ponctuation des incises.
 Une contradiction ou une incohérence entre passages n'est pas de ton ressort ici : une autre relecture s'en charge.`;
   const structure = docType === 'rapport' ? structureRapport : docType === 'decision_ar' ? structureDecision : isLetter(docType) ? `REPÈRES DE STRUCTURE D'UNE LETTRE (pour le périmètre des consignes) :
 - DESTINATAIRE : qualité, entité et ville du destinataire, en tête de lettre (« الفاضل المحترم / السيد وزير … / - الرباط - » ; « À l'attention de Maître … »).
@@ -435,6 +441,18 @@ function mergeDedup(regexCorr, claudeCorr) {
   return out;
 }
 
+// Rapports d'instruction : règles fixes, appliquées sans modèle (et rappelées au modèle).
+export const REGLES_RAPPORT = [
+  { code: 'R-01', doctype: 'rapport', category: 'FORME', mode: 'regex', active: true, label: 'Numéro de loi ou de décret', text: "Numéros de lois et de décrets avec des tirets : « loi n° 104-12 », « décret n° 2-14-652 ».",
+    regex: [
+      { find: '\\b(loi n°) ?(\\d{1,3})\\.(\\d{2})\\b(?!\\.\\d)', replace: '$1 $2-$3', flags: 'g', label: 'loi n° 104.12 -> 104-12' },
+      { find: '\\b(décret n°) ?(\\d)\\.(\\d{2})\\.(\\d{2,3})\\b', replace: '$1 $2-$3-$4', flags: 'g', label: 'décret n° 2.14.652 -> 2-14-652' },
+      { find: '\\b(loi|décret) n°(?=\\d)', replace: '$1 n° ', flags: 'g', label: 'espace après n°' },
+    ] },
+  { code: 'R-02', doctype: 'rapport', category: 'FORME', mode: 'regex', active: true, label: 'Tournure impersonnelle', text: "« il sera procédé » et non « sera procédé ».",
+    regex: [{ find: '(?<![Ii]l )\\bsera procédé(?![a-zà-ÿ])', replace: 'il sera procédé', flags: 'g', label: 'sera procédé -> il sera procédé' }] },
+];
+
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -447,9 +465,10 @@ export default async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { text, opts, consignes, dates, envoi } = body;
+  const { text, opts, dates, envoi } = body;
   const verifierEnLigne = isLetter(body.docType) && body.verifierEnLigne !== false;
   const docType = body.docType || 'cp_fr';
+  const consignes = docType === 'rapport' ? (Array.isArray(body.consignes) ? body.consignes : []).concat(REGLES_RAPPORT) : body.consignes;
   if (!text || typeof text !== 'string') {
     return res.status(400).json({ error: "Champ 'text' manquant ou invalide." });
   }

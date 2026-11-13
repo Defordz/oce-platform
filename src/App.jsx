@@ -278,7 +278,7 @@ const CORRECTION_VARIANTS = {
 };
 
 // Rapports : découpage en parties de taille raisonnable, aux limites de paragraphes.
-const RAPPORT_PARTIE = 12000;
+const RAPPORT_PARTIE = 8000; // parties plus courtes : relecture plus attentive (consignes mises en cache)
 const RAPPORT_PARALLELE = 3;
 function decouper(text, max = RAPPORT_PARTIE) {
   const parts = []; let cur = "";
