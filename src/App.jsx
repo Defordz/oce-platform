@@ -194,7 +194,10 @@ function diffIslands(a, b) {
     return [{ start: 0, del: "", ins: head }, ...rest];
   }
   const isApos = c => c === "\u0027" || c === "\u2019" || c === "\u02bc" || c === "\uff07" || c === "\u2018";
-  const eq = (x, y) => x === y || (isApos(x) && isApos(y));
+  // Espace insécable du document face à une espace ordinaire de la suggestion (le texte
+  // relu a ses espaces normalisées) : identiques, pour ne jamais retirer une insécable.
+  const isInsec = c => c === "\u00a0" || c === "\u202f" || c === "\u2009";
+  const eq = (x, y) => x === y || (isApos(x) && isApos(y)) || (isInsec(x) && y === " ");
   const n = a.length, m = b.length;
   const dp = [];
   for (let i = 0; i <= n; i++) dp.push(new Int32Array(m + 1));
@@ -335,7 +338,7 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
   const [notes, setNotes] = useState([]); // notes de bas de page du rapport
   const [docXmlRapport, setDocXmlRapport] = useState(null); // document.xml et styles.xml du rapport (tableaux, capitales)
   const [cout, setCout] = useState(null);  // coût réel de l'analyse, en dollars
-  const [modeleLangue, setModeleLangue] = useState("claude-sonnet-5-5");
+  const [modeleLangue, setModeleLangue] = useState("claude-opus-5-5"); // CVC/IFF 13/11 : Opus plus précis que Sonnet, sans correction fautive
   // Rapports : noms des sociétés et des personnes remplacés par des codes avant l'envoi.
   const [pseudoOn, setPseudoOn] = useState(true);
   const [noms, setNoms] = useState([]);
@@ -647,6 +650,12 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       const ps = map[k], pe = map[k + no.length];
       if (ps == null || pe == null) continue;
       const rawO = combined.slice(ps, pe);
+      // Garde : une correction qui, à cet endroit, créerait un mot répété (« il il sera
+      // procédé », « de de ») n'est pas posée ici (l'extrait se retrouve ailleurs).
+      const fen = (t, a, b) => t.slice(Math.max(0, a - 25), b + 25);
+      const doublon = t => { const r = /(?:^|[^\p{L}])(\p{L}+)[\s\u00a0]+\1(?![\p{L}])/giu; const out = new Set(); let x; while ((x = r.exec(t))) out.add(x[1].toLowerCase()); return out; };
+      const avantD = doublon(fen(combined, ps, pe)), apresD = doublon(fen(combined.slice(0, ps) + suggested + combined.slice(pe), ps, ps + suggested.length));
+      if ([...apresD].some(w => !avantD.has(w))) continue;
       const isls = diffIslands(rawO, suggested).map(isl => {
         const a = ps + isl.start;
         return { a, b: a + isl.del.length, ins: isl.ins };
@@ -658,7 +667,13 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
     // on les traite donc ici, directement sur le document brut. On ne touche pas
     // aux espaces insecables (\u00a0), typographiquement corrects en francais.
     const wsRuns = [];
-    { const wre = / {2,}/g; let wm; while ((wm = wre.exec(combined)) !== null) wsRuns.push({ a: wm.index + 1, b: wm.index + wm[0].length, ins: "" }); }
+    { const wre = / {2,}/g; let wm; while ((wm = wre.exec(combined)) !== null) wsRuns.push({ a: wm.index + 1, b: wm.index + wm[0].length, ins: "", n: wm[0].length, debut: wm.index }); }
+    // Rapports : les suites d'espaces de mise en page (en bord de paragraphe, ou de trois
+    // espaces et plus) ne sont pas des fautes ; seule une double espace entre deux mots l'est.
+    if (cfg.rapport) {
+      const t0 = combined.search(/\S/), t1 = combined.length - (combined.match(/\s*$/) || [""])[0].length;
+      for (let k = wsRuns.length - 1; k >= 0; k--) { const w = wsRuns[k]; if (w.n !== 2 || t0 < 0 || w.debut < t0 || w.debut + w.n > t1) wsRuns.splice(k, 1); }
+    }
     if (!located.length && !wsRuns.length) return paraXml;
 
     // 2. resoudre les chevauchements de plages : par debut croissant, puis plage
@@ -727,8 +742,11 @@ function CorrectionPage({consignes, history, setHistory, variant}) {
       // Process paragraph by paragraph
       const correctionsList = accepted.map(c => ({ original: c.original, suggested: c.suggested }));
       const appliedFlags = new Array(correctionsList.length).fill(false);
+      // Rapports : les lignes du sommaire (styles « TM n » / « TOC n ») ne sont pas retouchées :
+      // le sommaire se régénère depuis les titres corrigés.
+      const ligneSommaire = para => cfg.rapport && /<w:pStyle w:val="(?:TM|TOC|toc) ?\d"/.test(para);
       const result = docXml.replace(/(<w:p\b[\s\S]*?<\/w:p>)/g, (para) =>
-        applyTrackChangesToPara(para, correctionsList, appliedFlags, changeId, date)
+        ligneSommaire(para) ? para : applyTrackChangesToPara(para, correctionsList, appliedFlags, changeId, date)
       );
 
       zip.file("word/document.xml", result);
