@@ -365,9 +365,16 @@ export default async function handler(req, res) {
     const verifCorr = verif ? verif.corrections : [];
     const proto = isLetter(docType) ? letterCorrections({ text, docType, verifCorrections: verifCorr, destinataire }) : { corrections: [], merged: new Set(), warnings: [] };
     const deterministic = proto.corrections.concat(datePass.corrections, regexCorr);
-    const exclusive = proto.corrections.filter(c => c.exclusive);
+    // Corrections faisant foi : protocole des lettres et dates saisies. Toute
+    // suggestion du modèle qui chevauche l'un de ces passages est écartée.
+    const exclusive = proto.corrections.filter(c => c.exclusive).concat(datePass.corrections);
     const aligne = c => { const sug = applyLetterFormulas(c.suggested, proto.categorie); return sug === c.suggested ? c : { ...c, suggested: sug }; };
-    const touchesExclusive = c => exclusive.some(d => d.original.includes(c.original) || c.original.includes(d.original));
+    const span = s => { const i = text.indexOf(s); return i < 0 ? null : [i, i + s.length]; };
+    const touchesExclusive = c => exclusive.some(d => {
+      if (d.original.includes(c.original) || c.original.includes(d.original)) return true;
+      const a = span(c.original), b = span(d.original);
+      return !!(a && b && a[0] < b[1] && b[0] < a[1]);
+    });
     const claudeCorr = harmonizeWithRules((parsed.corrections || []).concat(verifCorr.filter((_, k) => !proto.merged.has(k))), docType, consignes)
       .filter(c => !touchesExclusive(c)).map(aligne).filter(c => c.suggested.replace(/\s+/g, ' ').trim() !== c.original.replace(/\s+/g, ' ').trim());
     // Décisions : le bloc des signatures (après « تم التداول ») n'est jamais retouché.
